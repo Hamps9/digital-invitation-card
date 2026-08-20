@@ -52,6 +52,12 @@ const ADMIN_FILE = path.join(ROOT, 'admin.html');
 const ADMIN_ACCESS_FILE = path.join(ROOT, 'admin-access.html');
 const INVITES_FILE = path.join(ROOT, 'invites.json');
 const ADMIN_SECRET = getAdminSecret();
+const ADMIN_NO_CACHE_HEADERS = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    Pragma: 'no-cache',
+    Expires: '0'
+};
+const MAX_EMBEDDED_IMAGE_LENGTH = 20 * 1024 * 1024;
 const ADMIN_COOKIE_NAME = 'admin_session';
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_OPENING_MESSAGE = 'You are warmly invited to celebrate our special day.';
@@ -109,6 +115,9 @@ const DEFAULT_SITE_SETTINGS = {
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
 const SUPABASE_SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '').trim();
 const SUPABASE_REST_URL = SUPABASE_URL ? SUPABASE_URL + '/rest/v1' : '';
+const SUPABASE_STORAGE_URL = SUPABASE_URL ? SUPABASE_URL + '/storage/v1' : '';
+const IMAGE_STORAGE_BUCKET = 'invitation-images';
+const IMAGE_STORAGE_ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 function hasSupabaseConfig() {
     return Boolean(SUPABASE_REST_URL && SUPABASE_SERVICE_KEY);
@@ -134,6 +143,29 @@ async function supabaseRequest(pathSuffix, options = {}) {
     }
 
     const res = await fetch(SUPABASE_REST_URL + pathSuffix, {
+        ...options,
+        headers: supabaseAuthHeaders(options.headers || {})
+    });
+
+    const raw = await res.text();
+    let data = null;
+    if (raw) {
+        try {
+            data = JSON.parse(raw);
+        } catch {
+            data = raw;
+        }
+    }
+
+    return { res, data };
+}
+
+async function supabaseStorageRequest(pathSuffix, options = {}) {
+    if (!hasSupabaseConfig()) {
+        throw new Error('Supabase is not configured');
+    }
+
+    const res = await fetch(SUPABASE_STORAGE_URL + pathSuffix, {
         ...options,
         headers: supabaseAuthHeaders(options.headers || {})
     });
@@ -330,6 +362,99 @@ function splitFieldLines(value, maxItems = 3, maxLength = 500) {
         .slice(0, maxItems);
 }
 
+function normalizeImageList(value, maxItems = 3) {
+    const source = Array.isArray(value) ? value : String(value || '').split(String.fromCharCode(10));
+    return source
+        .map(item => cleanUrl(item, MAX_EMBEDDED_IMAGE_LENGTH))
+        .filter(Boolean)
+        .slice(0, maxItems);
+}
+
+function isDataImageUrl(value) {
+    return typeof value === 'string' && /^data:image\/[^;]+;base64,/i.test(value.trim());
+}
+
+function parseDataImageUrl(value) {
+    const match = String(value || '').trim().match(/^data:(image\/[^;]+);base64,(.+)$/i);
+    if (!match) {
+        throw new Error('Invalid image data');
+    }
+    return {
+        mimeType: match[1].toLowerCase(),
+        buffer: Buffer.from(match[2], 'base64')
+    };
+}
+
+function extensionFromMimeType(mimeType) {
+    const map = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
+        'image/gif': 'gif'
+    };
+    return map[mimeType] || 'png';
+}
+
+function encodeStoragePath(filePath) {
+    return String(filePath || '').split('/').map(encodeURIComponent).join('/');
+}
+
+function publicStorageUrl(bucket, objectPath) {
+    return SUPABASE_URL + '/storage/v1/object/public/' + bucket + '/' + encodeStoragePath(objectPath);
+}
+
+async function uploadImageDataUrl(dataUrl, objectPath) {
+    const parsed = parseDataImageUrl(dataUrl);
+    const targetPath = encodeStoragePath(objectPath);
+    const { res, data } = await supabaseStorageRequest('/object/' + IMAGE_STORAGE_BUCKET + '/' + targetPath, {
+        method: 'POST',
+        headers: supabaseAuthHeaders({
+            'Content-Type': parsed.mimeType,
+            'x-upsert': 'false',
+            'Cache-Control': '31536000'
+        }),
+        body: parsed.buffer
+    });
+
+    if (!res.ok) {
+        const detail = typeof data === 'string' ? data : (data && data.message) || (data && data.error) || ('HTTP ' + res.status);
+        const bucketHint = res.status === 404 || /bucket/i.test(String(detail))
+            ? " Make sure storage bucket 'invitation-images' exists by running supabase-schema.sql in Supabase."
+            : '';
+        throw new Error('Failed to upload image to Supabase Storage: ' + detail + bucketHint);
+    }
+
+    return publicStorageUrl(IMAGE_STORAGE_BUCKET, objectPath);
+}
+
+async function materializeImageList(values, prefix) {
+    const items = Array.isArray(values) ? values : [];
+    const output = [];
+
+    for (let i = 0; i < items.length; i += 1) {
+        const value = cleanUrl(items[i], MAX_EMBEDDED_IMAGE_LENGTH);
+        if (!value) continue;
+
+        if (isDataImageUrl(value)) {
+            const parsed = parseDataImageUrl(value);
+            const ext = extensionFromMimeType(parsed.mimeType);
+            const objectPath = 'site-settings/' + prefix + '/' + Date.now() + '-' + i + '-' + crypto.randomBytes(6).toString('hex') + '.' + ext;
+            output.push(await uploadImageDataUrl(value, objectPath));
+        } else {
+            output.push(value);
+        }
+    }
+
+    return output.slice(0, 3);
+}
+
+async function materializeUploadedImages(settings) {
+    const prepared = JSON.parse(JSON.stringify(settings || {}));
+    prepared.ladiesImageUrls = await materializeImageList(prepared.ladiesImageUrls, 'ladies');
+    prepared.menImageUrls = await materializeImageList(prepared.menImageUrls, 'men');
+    return prepared;
+}
+
 function cleanUrl(value, maxLength = 500) {
     const text = cleanText(value, maxLength);
     if (!text) return '';
@@ -368,9 +493,9 @@ function normalizeSiteSettings(body = {}) {
     settings.dressCodeDescription = cleanText(source.dressCodeDescription, 240) || settings.dressCodeDescription;
     settings.ladiesHeading = cleanText(source.ladiesHeading, 120) || settings.ladiesHeading;
     settings.menHeading = cleanText(source.menHeading, 120) || settings.menHeading;
-    settings.ladiesImageUrls = splitFieldLines(source.ladiesImageUrls, 3, 500).map(cleanUrl).filter(Boolean);
+    settings.ladiesImageUrls = normalizeImageList(source.ladiesImageUrls, 3);
     settings.ladiesCaptions = splitFieldLines(source.ladiesCaptions, 3, 80);
-    settings.menImageUrls = splitFieldLines(source.menImageUrls, 3, 500).map(cleanUrl).filter(Boolean);
+    settings.menImageUrls = normalizeImageList(source.menImageUrls, 3);
     settings.menCaptions = splitFieldLines(source.menCaptions, 3, 80);
 
     settings.giftQuote = cleanText(source.giftQuote, 280) || settings.giftQuote;
@@ -414,8 +539,9 @@ async function readSiteSettings() {
 }
 
 async function writeSiteSettings(settings) {
-    const normalized = normalizeSiteSettings(settings);
+    let normalized = normalizeSiteSettings(settings);
     if (hasSupabaseConfig()) {
+        normalized = await materializeUploadedImages(normalized);
         const rows = [{
             id: 'default',
             settings: normalized,
@@ -546,7 +672,7 @@ async function readJsonBody(req) {
     await new Promise((resolve, reject) => {
         req.on('data', chunk => {
             raw += chunk;
-            if (raw.length > 1e6) {
+            if (raw.length > 25 * 1024 * 1024) {
                 req.destroy();
                 reject(new Error('Request body too large'));
             }
@@ -625,10 +751,10 @@ async function sendEmail(data) {
     }
 }
 
-async function serveFile(res, filePath) {
+async function serveFile(res, filePath, extraHeaders = {}) {
     try {
         const buf = await fsp.readFile(filePath);
-        res.writeHead(200, { 'Content-Type': contentType(filePath) });
+        res.writeHead(200, { 'Content-Type': contentType(filePath), ...extraHeaders });
         res.end(buf);
     } catch {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -751,12 +877,12 @@ const server = http.createServer(async(req, res) => {
 
         if (req.method === 'GET' && (url.pathname === '/admin' || url.pathname === '/admin/' || url.pathname === '/admin.html' || url.pathname === '/admin/access')) {
             if (!ADMIN_SECRET) {
-                await serveFile(res, ADMIN_ACCESS_FILE);
+                await serveFile(res, ADMIN_ACCESS_FILE, ADMIN_NO_CACHE_HEADERS);
                 return;
             }
 
             if (hasAdminAccess(req)) {
-                await serveFile(res, ADMIN_FILE);
+                await serveFile(res, ADMIN_FILE, ADMIN_NO_CACHE_HEADERS);
             } else {
                 await serveFile(res, ADMIN_ACCESS_FILE);
             }
@@ -904,7 +1030,7 @@ const server = http.createServer(async(req, res) => {
             let raw = '';
             req.on('data', chunk => {
                 raw += chunk;
-                if (raw.length > 1e6) req.destroy();
+                if (raw.length > 25 * 1024 * 1024) req.destroy();
             });
             req.on('end', () => {
                 let data = {};

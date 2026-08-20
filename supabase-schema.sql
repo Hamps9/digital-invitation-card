@@ -14,3 +14,7 @@ create table if not exists public.invites (
 );
 
 alter table public.invites enable row level security;
+
+insert into storage.buckets (id, name, public)
+values ('invitation-images', 'invitation-images', true)
+on conflict (id) do nothing;
