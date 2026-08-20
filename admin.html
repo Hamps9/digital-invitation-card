@@ -357,8 +357,14 @@
       gap: 12px;
       align-items: flex-start;
     }
-    .invite-name { font-weight: 800; font-size: 16px; margin: 0 0 4px; color: #fff; }
+    .invite-name { font-weight: 800; font-size: 16px; margin: 0 0 4px; color: #2d2722; }
     .meta { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.45; }
+    .invite-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
     .small-btn {
       border: 1px solid rgba(255, 255, 255, 0.15);
       background: rgba(255, 255, 255, 0.82);
@@ -374,6 +380,15 @@
       transform: translateY(-1px);
       background: rgba(182, 138, 69, 0.12);
       border-color: rgba(182, 138, 69, 0.30);
+    }
+    .small-btn.danger {
+      color: #943f35;
+      border-color: rgba(148, 63, 53, 0.18);
+      background: rgba(148, 63, 53, 0.08);
+    }
+    .small-btn.danger:hover {
+      background: rgba(148, 63, 53, 0.14);
+      border-color: rgba(148, 63, 53, 0.30);
     }
     .copy-line { margin-top: 10px; font-size: 12px; color: var(--muted); word-break: break-word; }
     .settings-section {
@@ -553,6 +568,58 @@
       }
     }
 
+    async function editInvite(invite) {
+      const displayName = window.prompt('Edit invite name', invite.displayName || '');
+      if (displayName === null) return;
+
+      const inviteType = window.prompt('Edit invite type (individual, couple, family, custom)', invite.inviteType || 'custom');
+      if (inviteType === null) return;
+
+      const openingMessage = window.prompt('Edit opening note', invite.openingMessage || defaultMessage);
+      if (openingMessage === null) return;
+
+      const body = {
+        displayName: displayName.trim() || invite.displayName || '',
+        inviteType: inviteType.trim() || invite.inviteType || 'custom',
+        openingMessage: openingMessage.trim() || invite.openingMessage || defaultMessage
+      };
+
+      if (!body.displayName) {
+        window.alert('Invite name is required.');
+        return;
+      }
+
+      setStatus(listStatus, 'Saving invite changes...');
+      const { res, data } = await requestJson('/api/admin/invites/' + encodeURIComponent(invite.token), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = '/admin';
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || 'Unable to update invite');
+      setStatus(listStatus, 'Updated ' + data.invite.displayName + '.');
+      await loadInvites();
+    }
+
+    async function deleteInvite(invite) {
+      if (!window.confirm('Delete invite for ' + (invite.displayName || 'this guest') + '? This cannot be undone.')) return;
+
+      setStatus(listStatus, 'Deleting invite...');
+      const { res, data } = await requestJson('/api/admin/invites/' + encodeURIComponent(invite.token), {
+        method: 'DELETE'
+      });
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = '/admin';
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || 'Unable to delete invite');
+      setStatus(listStatus, 'Invite deleted.');
+      await loadInvites();
+    }
+
     function buildCard(invite) {
       const card = document.createElement('div');
       card.className = 'invite-card';
@@ -566,7 +633,7 @@
       title.textContent = invite.displayName || '(Unnamed invite)';
       const meta = document.createElement('p');
       meta.className = 'meta';
-      meta.textContent = `${invite.inviteType || 'custom'} ï¿½ ${invite.createdAt ? new Date(invite.createdAt).toLocaleString() : ''}`;
+      meta.textContent = (invite.inviteType || 'custom') + ' • ' + (invite.createdAt ? new Date(invite.createdAt).toLocaleString() : '');
       info.appendChild(title);
       info.appendChild(meta);
 
@@ -595,9 +662,28 @@
       message.className = 'copy-line';
       message.textContent = invite.openingMessage || '';
 
+      const actions = document.createElement('div');
+      actions.className = 'invite-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'small-btn';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => editInvite(invite).catch(err => setStatus(listStatus, err.message, true)));
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'small-btn danger';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => deleteInvite(invite).catch(err => setStatus(listStatus, err.message, true)));
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+
       card.appendChild(top);
       card.appendChild(link);
       card.appendChild(message);
+      card.appendChild(actions);
       return card;
     }
 
@@ -1074,3 +1160,4 @@
   </script>
 </body>
 </html>
+

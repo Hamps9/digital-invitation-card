@@ -586,6 +586,20 @@ function createInviteRecord(body) {
     };
 }
 
+function updateInviteRecord(existing, body) {
+    const displayName = cleanText(body.displayName || body.name || existing.displayName || '', 120);
+    const inviteType = normalizeInviteType(body.inviteType || existing.inviteType);
+    const openingMessage = cleanText(body.openingMessage || body.message || existing.openingMessage || defaultOpeningMessage(inviteType), 240) || defaultOpeningMessage(inviteType);
+
+    return {
+        ...existing,
+        displayName,
+        inviteType,
+        openingMessage,
+        updatedAt: new Date().toISOString()
+    };
+}
+
 function buildInviteLink(req, token) {
     // If EXTERNAL_URL is configured, use it for guest links
     if (EXTERNAL_URL) {
@@ -1023,6 +1037,93 @@ const server = http.createServer(async(req, res) => {
                     link: buildInviteLink(req, invite.token)
                 }
             });
+            return;
+        }
+
+        if ((req.method === 'PUT' || req.method === 'PATCH') && url.pathname.startsWith('/api/admin/invites/')) {
+            if (!ADMIN_SECRET) {
+                await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
+                return;
+            }
+            if (!hasAdminAccess(req)) {
+                await sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
+
+            const token = decodeURIComponent(url.pathname.replace('/api/admin/invites/', '').replace(/^\/+/, ''));
+            if (!token) {
+                await sendJson(res, 400, { ok: false, error: 'Invite token is required' });
+                return;
+            }
+
+            let body = {};
+            try {
+                body = await readJsonBody(req);
+            } catch (err) {
+                await sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON body' });
+                return;
+            }
+
+            const invites = await readInviteStore();
+            const index = invites.findIndex(invite => invite.token === token);
+            if (index === -1) {
+                await sendJson(res, 404, { ok: false, error: 'Invite not found' });
+                return;
+            }
+
+            const updated = updateInviteRecord(invites[index], body);
+            invites[index] = updated;
+            await writeInviteStore(invites);
+
+            await sendJson(res, 200, {
+                ok: true,
+                invite: {
+                    token: updated.token,
+                    displayName: updated.displayName,
+                    inviteType: updated.inviteType,
+                    openingMessage: updated.openingMessage,
+                    createdAt: updated.createdAt,
+                    updatedAt: updated.updatedAt,
+                    link: buildInviteLink(req, updated.token)
+                }
+            });
+            return;
+        }
+
+        if (req.method === 'DELETE' && url.pathname.startsWith('/api/admin/invites/')) {
+            if (!ADMIN_SECRET) {
+                await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
+                return;
+            }
+            if (!hasAdminAccess(req)) {
+                await sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
+
+            const token = decodeURIComponent(url.pathname.replace('/api/admin/invites/', '').replace(/^\/+/, ''));
+            if (!token) {
+                await sendJson(res, 400, { ok: false, error: 'Invite token is required' });
+                return;
+            }
+
+            const invites = await readInviteStore();
+            const nextInvites = invites.filter(invite => invite.token !== token);
+            if (nextInvites.length === invites.length) {
+                await sendJson(res, 404, { ok: false, error: 'Invite not found' });
+                return;
+            }
+
+            if (hasSupabaseConfig()) {
+                const deletePath = '/invites?token=eq.' + encodeURIComponent(token);
+                const { res: deleteRes } = await supabaseRequest(deletePath, { method: 'DELETE' });
+                if (!deleteRes.ok) {
+                    await sendJson(res, 500, { ok: false, error: 'Failed to delete invite from Supabase' });
+                    return;
+                }
+            }
+
+            await writeLocalInviteStore(nextInvites);
+            await sendJson(res, 200, { ok: true });
             return;
         }
 
