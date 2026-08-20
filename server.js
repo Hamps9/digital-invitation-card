@@ -55,6 +55,154 @@ const ADMIN_SECRET = getAdminSecret();
 const ADMIN_COOKIE_NAME = 'admin_session';
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const DEFAULT_OPENING_MESSAGE = 'You are warmly invited to celebrate our special day.';
+const SITE_SETTINGS_FILE = path.join(ROOT, 'site-settings.json');
+const DEFAULT_SITE_SETTINGS = {
+    coupleNames: 'Amara & Josiah',
+    heroTagline: 'request the pleasure of your company as they exchange vows',
+    dateText: '18th April 2027',
+    weddingDateTime: '2027-04-18T11:00:00',
+    calendarTitle: 'Amara & Josiah Wedding',
+    calendarDetails: 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at St. Augustine Gardens Chapel. Reception: 2:00 PM at The Mosi Pavilion.',
+    calendarLocation: 'St. Augustine Gardens Chapel, Plot 14, Riverside Drive, Kitwe',
+    envelopePrompt: 'Tap the envelope to open',
+    openingMessage: 'You are warmly invited to celebrate our special day.',
+    ceremonyVenue: 'St. Augustine Gardens Chapel',
+    ceremonyTime: '11:00 AM - Saturday',
+    ceremonyLocation: 'Plot 14, Riverside Drive, Kitwe',
+    ceremonyDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=St.%20Augustine%20Gardens%20Chapel%2C%20Plot%2014%2C%20Riverside%20Drive%2C%20Kitwe',
+    receptionVenue: 'The Mosi Pavilion',
+    receptionTime: '2:00 PM - Saturday',
+    receptionLocation: '27 Parklands Avenue, Kitwe',
+    receptionDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=The%20Mosi%20Pavilion%2C%2027%20Parklands%20Avenue%2C%20Kitwe',
+    dressCodeTitle: 'Elegant Garden Party',
+    dressCodeDescription: 'Soft, breathable fabrics in our wedding palette - flowing dresses, light suits, garden-ready shoes.',
+    ladiesHeading: 'Ladies Dress Code',
+    menHeading: 'Men\'s Dress Code',
+    ladiesImageUrls: [
+        'https://www.nicea-mariage.com/img/robes-mariees/thumbnails/Eo7rN3Kk2EIdBWO_1600.jpg',
+        'https://www.weddingsinhouston.com/uploads/real_weddings/vivian-matt-real-wedding/RW-Vivian-Matt-TheGallery-CakesByGina-IvoryBridalAtelier-Ouisie-sTable-HIRES0256.jpg',
+        'https://i0.wp.com/bridalmusings.com/wp-content/uploads/2023/08/image-16.png?quality=80&resize=1140%2C760&ssl=1'
+    ],
+    ladiesCaptions: ['Flowing Dress', 'Elegant Gown', 'Garden Party'],
+    menImageUrls: [
+        'https://www.bentexsuits.com.au/assets/image/DC108951.jpg',
+        'https://images.squarespace-cdn.com/content/v1/5da5bb25a00bd00e72244aac/1662502210847-NHNX70WKRCD5INGPJ6D8/2206-07%2BSydney%2B%2B%2BConley%2BWedding%2B2035.jpg',
+        'https://icdn2.insideweddings.com/fit-in/1440x0/filters%3Aquality%2890%29/filters%3Ano_upscale%28%29/filters%3Astrip_icc%28%29/fileupload/2019/04/13/Eric%20Kelley-Kuhl-groom.jpg'
+    ],
+    menCaptions: ['Light Suit', 'Dress Shirt', 'Smart Casual'],
+    giftQuote: '"Your presence is our greatest gift. Should you wish to bless us further, contributions are warmly welcome."',
+    mobileMoneyLabel: 'Mobile Money',
+    mobileMoneyValue: '+260 97 000 0000',
+    bankLabel: 'Bank Transfer',
+    bankValue: 'Stanbic - 900 000 0000',
+    adultsOnly: 'Adults Only Event',
+    stayHeading: 'Nearby Rest',
+    stay1Name: 'Edinburgh Hotel',
+    stay1Detail: '8 min from venue - from K950/night',
+    stay1Phone: '+260000000000',
+    stay2Name: 'Hillcrest Guest Lodge',
+    stay2Detail: '12 min from venue - from K620/night',
+    stay2Phone: '+260000000000',
+    rsvpIntro: "We'd love to know if we can save you a seat."
+};
+
+const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+const SUPABASE_SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '').trim();
+const SUPABASE_REST_URL = SUPABASE_URL ? SUPABASE_URL + '/rest/v1' : '';
+
+function hasSupabaseConfig() {
+    return Boolean(SUPABASE_REST_URL && SUPABASE_SERVICE_KEY);
+}
+
+function supabaseAuthHeaders(extraHeaders = {}) {
+    return Object.assign({
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: 'Bearer ' + SUPABASE_SERVICE_KEY,
+        Prefer: 'return=representation'
+    }, extraHeaders);
+}
+
+function supabaseJsonHeaders(extraHeaders = {}) {
+    return supabaseAuthHeaders(Object.assign({
+        'Content-Type': 'application/json'
+    }, extraHeaders));
+}
+
+async function supabaseRequest(pathSuffix, options = {}) {
+    if (!hasSupabaseConfig()) {
+        throw new Error('Supabase is not configured');
+    }
+
+    const res = await fetch(SUPABASE_REST_URL + pathSuffix, {
+        ...options,
+        headers: supabaseAuthHeaders(options.headers || {})
+    });
+
+    const raw = await res.text();
+    let data = null;
+    if (raw) {
+        try {
+            data = JSON.parse(raw);
+        } catch {
+            data = raw;
+        }
+    }
+
+    return { res, data };
+}
+
+function normalizeSiteSettingsRecord(record) {
+    if (!record) return cloneDefaultSiteSettings();
+    return normalizeSiteSettings(record.settings || record.payload || record);
+}
+
+function normalizeSupabaseInviteRecord(record) {
+    const invite = record && typeof record.invite === 'object' && record.invite ? record.invite : {};
+    const token = cleanText(record.token || invite.token || '', 64);
+    const inviteType = normalizeInviteType(invite.inviteType || record.invite_type || 'custom');
+    const openingMessage = cleanText(invite.openingMessage || invite.message || record.opening_message || defaultOpeningMessage(inviteType), 240) || defaultOpeningMessage(inviteType);
+
+    return {
+        token,
+        displayName: cleanText(invite.displayName || invite.name || record.display_name || '', 120),
+        inviteType,
+        openingMessage,
+        createdAt: String(record.created_at || invite.createdAt || new Date().toISOString()),
+        updatedAt: String(record.updated_at || invite.updatedAt || record.created_at || new Date().toISOString())
+    };
+}
+
+async function readLocalInviteStore() {
+    try {
+        const raw = await fsp.readFile(INVITES_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+async function writeLocalInviteStore(invites) {
+    const tmpFile = INVITES_FILE + '.tmp';
+    await fsp.writeFile(tmpFile, JSON.stringify(invites, null, 2), 'utf8');
+    await fsp.rename(tmpFile, INVITES_FILE);
+}
+
+async function readLocalSiteSettings() {
+    try {
+        const raw = await fsp.readFile(SITE_SETTINGS_FILE, 'utf8');
+        const parsed = raw ? JSON.parse(raw) : {};
+        return normalizeSiteSettings(parsed);
+    } catch {
+        return cloneDefaultSiteSettings();
+    }
+}
+
+async function writeLocalSiteSettings(settings) {
+    const tmpFile = SITE_SETTINGS_FILE + '.tmp';
+    await fsp.writeFile(tmpFile, JSON.stringify(settings, null, 2), 'utf8');
+    await fsp.rename(tmpFile, SITE_SETTINGS_FILE);
+}
 
 function contentType(filePath) {
     const ext = path.extname(filePath).toLowerCase();
@@ -114,19 +262,180 @@ function defaultOpeningMessage(type) {
 }
 
 async function readInviteStore() {
-    try {
-        const raw = await fsp.readFile(INVITES_FILE, 'utf8');
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
+    if (hasSupabaseConfig()) {
+        try {
+            const { res, data } = await supabaseRequest('/invites?select=token,invite,created_at,updated_at&order=created_at.desc', {
+                method: 'GET'
+            });
+            if (res.ok && Array.isArray(data)) {
+                const mapped = data.map(normalizeSupabaseInviteRecord).filter(invite => invite.token);
+                if (mapped.length) return mapped;
+            }
+        } catch {}
+
+        const localInvites = await readLocalInviteStore();
+        if (localInvites.length) {
+            try {
+                await writeInviteStore(localInvites);
+            } catch {}
+        }
+        return localInvites;
     }
+
+    return readLocalInviteStore();
 }
 
 async function writeInviteStore(invites) {
-    const tmpFile = INVITES_FILE + '.tmp';
-    await fsp.writeFile(tmpFile, JSON.stringify(invites, null, 2), 'utf8');
-    await fsp.rename(tmpFile, INVITES_FILE);
+    const normalized = Array.isArray(invites) ? invites : [];
+    if (hasSupabaseConfig()) {
+        const rows = normalized.map(invite => ({
+            token: invite.token,
+            invite: {
+                token: invite.token,
+                displayName: invite.displayName,
+                inviteType: invite.inviteType,
+                openingMessage: invite.openingMessage,
+                createdAt: invite.createdAt,
+                updatedAt: invite.updatedAt
+            },
+            created_at: invite.createdAt,
+            updated_at: invite.updatedAt
+        }));
+
+        const { res } = await supabaseRequest('/invites?on_conflict=token', {
+            method: 'POST',
+            headers: supabaseJsonHeaders({
+                Prefer: 'resolution=merge-duplicates,return=representation'
+            }),
+            body: JSON.stringify(rows)
+        });
+
+        if (!res.ok) {
+            throw new Error('Failed to save invite records to Supabase');
+        }
+    }
+
+    await writeLocalInviteStore(normalized);
+}
+
+function cloneDefaultSiteSettings() {
+    return JSON.parse(JSON.stringify(DEFAULT_SITE_SETTINGS));
+}
+
+function splitFieldLines(value, maxItems = 3, maxLength = 500) {
+    const source = Array.isArray(value) ? value : String(value || '').split(String.fromCharCode(10));
+    return source
+        .map(item => cleanText(item, maxLength))
+        .filter(Boolean)
+        .slice(0, maxItems);
+}
+
+function cleanUrl(value, maxLength = 500) {
+    const text = cleanText(value, maxLength);
+    if (!text) return '';
+    try {
+        return new URL(text).href;
+    } catch {
+        return text;
+    }
+}
+
+function normalizeSiteSettings(body = {}) {
+    const source = body && typeof body === 'object' ? body : {};
+    const settings = cloneDefaultSiteSettings();
+
+    settings.coupleNames = cleanText(source.coupleNames, 80) || settings.coupleNames;
+    settings.heroTagline = cleanText(source.heroTagline, 180) || settings.heroTagline;
+    settings.dateText = cleanText(source.dateText, 60) || settings.dateText;
+    settings.weddingDateTime = cleanText(source.weddingDateTime, 40) || settings.weddingDateTime;
+    settings.calendarTitle = cleanText(source.calendarTitle, 120) || settings.calendarTitle;
+    settings.calendarDetails = cleanText(source.calendarDetails, 500) || settings.calendarDetails;
+    settings.calendarLocation = cleanText(source.calendarLocation, 180) || settings.calendarLocation;
+    settings.envelopePrompt = cleanText(source.envelopePrompt, 80) || settings.envelopePrompt;
+    settings.openingMessage = cleanText(source.openingMessage, 280) || settings.openingMessage;
+
+    settings.ceremonyVenue = cleanText(source.ceremonyVenue, 120) || settings.ceremonyVenue;
+    settings.ceremonyTime = cleanText(source.ceremonyTime, 80) || settings.ceremonyTime;
+    settings.ceremonyLocation = cleanText(source.ceremonyLocation, 180) || settings.ceremonyLocation;
+    settings.ceremonyDirectionsUrl = cleanUrl(source.ceremonyDirectionsUrl) || settings.ceremonyDirectionsUrl;
+
+    settings.receptionVenue = cleanText(source.receptionVenue, 120) || settings.receptionVenue;
+    settings.receptionTime = cleanText(source.receptionTime, 80) || settings.receptionTime;
+    settings.receptionLocation = cleanText(source.receptionLocation, 180) || settings.receptionLocation;
+    settings.receptionDirectionsUrl = cleanUrl(source.receptionDirectionsUrl) || settings.receptionDirectionsUrl;
+
+    settings.dressCodeTitle = cleanText(source.dressCodeTitle, 120) || settings.dressCodeTitle;
+    settings.dressCodeDescription = cleanText(source.dressCodeDescription, 240) || settings.dressCodeDescription;
+    settings.ladiesHeading = cleanText(source.ladiesHeading, 120) || settings.ladiesHeading;
+    settings.menHeading = cleanText(source.menHeading, 120) || settings.menHeading;
+    settings.ladiesImageUrls = splitFieldLines(source.ladiesImageUrls, 3, 500).map(cleanUrl).filter(Boolean);
+    settings.ladiesCaptions = splitFieldLines(source.ladiesCaptions, 3, 80);
+    settings.menImageUrls = splitFieldLines(source.menImageUrls, 3, 500).map(cleanUrl).filter(Boolean);
+    settings.menCaptions = splitFieldLines(source.menCaptions, 3, 80);
+
+    settings.giftQuote = cleanText(source.giftQuote, 280) || settings.giftQuote;
+    settings.mobileMoneyLabel = cleanText(source.mobileMoneyLabel, 80) || settings.mobileMoneyLabel;
+    settings.mobileMoneyValue = cleanText(source.mobileMoneyValue, 80) || settings.mobileMoneyValue;
+    settings.bankLabel = cleanText(source.bankLabel, 80) || settings.bankLabel;
+    settings.bankValue = cleanText(source.bankValue, 120) || settings.bankValue;
+    settings.adultsOnly = cleanText(source.adultsOnly, 80) || settings.adultsOnly;
+
+    settings.stayHeading = cleanText(source.stayHeading, 120) || settings.stayHeading;
+    settings.stay1Name = cleanText(source.stay1Name, 120) || settings.stay1Name;
+    settings.stay1Detail = cleanText(source.stay1Detail, 120) || settings.stay1Detail;
+    settings.stay1Phone = cleanText(source.stay1Phone, 40) || settings.stay1Phone;
+    settings.stay2Name = cleanText(source.stay2Name, 120) || settings.stay2Name;
+    settings.stay2Detail = cleanText(source.stay2Detail, 120) || settings.stay2Detail;
+    settings.stay2Phone = cleanText(source.stay2Phone, 40) || settings.stay2Phone;
+    settings.rsvpIntro = cleanText(source.rsvpIntro, 180) || settings.rsvpIntro;
+
+    return settings;
+}
+
+async function readSiteSettings() {
+    if (hasSupabaseConfig()) {
+        try {
+            const { res, data } = await supabaseRequest('/site_settings?select=id,settings,updated_at&id=eq.default&limit=1', {
+                method: 'GET'
+            });
+            if (res.ok && Array.isArray(data) && data.length) {
+                return normalizeSiteSettingsRecord(data[0]);
+            }
+        } catch {}
+
+        const localSettings = await readLocalSiteSettings();
+        try {
+            await writeSiteSettings(localSettings);
+        } catch {}
+        return localSettings;
+    }
+
+    return readLocalSiteSettings();
+}
+
+async function writeSiteSettings(settings) {
+    const normalized = normalizeSiteSettings(settings);
+    if (hasSupabaseConfig()) {
+        const rows = [{
+            id: 'default',
+            settings: normalized,
+            updated_at: new Date().toISOString()
+        }];
+
+        const { res } = await supabaseRequest('/site_settings?on_conflict=id', {
+            method: 'POST',
+            headers: supabaseJsonHeaders({
+                Prefer: 'resolution=merge-duplicates,return=representation'
+            }),
+            body: JSON.stringify(rows)
+        });
+
+        if (!res.ok) {
+            throw new Error('Failed to save settings to Supabase');
+        }
+    }
+
+    await writeLocalSiteSettings(normalized);
 }
 
 async function findInvite(token) {
@@ -381,6 +690,51 @@ const server = http.createServer(async(req, res) => {
                 authenticated: hasAdminAccess(req),
                 accessPath: '/admin'
             });
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/site-settings') {
+            const settings = await readSiteSettings();
+            await sendJson(res, 200, { ok: true, settings });
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/admin/site-settings') {
+            if (!ADMIN_SECRET) {
+                await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
+                return;
+            }
+            if (!hasAdminAccess(req)) {
+                await sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
+
+            const settings = await readSiteSettings();
+            await sendJson(res, 200, { ok: true, settings });
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/admin/site-settings') {
+            if (!ADMIN_SECRET) {
+                await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
+                return;
+            }
+            if (!hasAdminAccess(req)) {
+                await sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
+
+            let body = {};
+            try {
+                body = await readJsonBody(req);
+            } catch (err) {
+                await sendJson(res, 400, { ok: false, error: err.message || 'Invalid JSON body' });
+                return;
+            }
+
+            const settings = normalizeSiteSettings(body);
+            await writeSiteSettings(settings);
+            await sendJson(res, 200, { ok: true, settings });
             return;
         }
 

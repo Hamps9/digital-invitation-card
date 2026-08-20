@@ -10,3 +10,7 @@ services:
         value: 20
       - key: ADMIN_SECRET
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

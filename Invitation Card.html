@@ -1339,6 +1339,55 @@
         // ---------- Personalization via URL: ?to=Guest+Name or ?invite=TOKEN ----------
         var guestDisplayName = '';
         var guestOpeningMessage = 'You are warmly invited to celebrate our special day.';
+        var siteSettings = {
+            coupleNames: 'Amara & Josiah',
+            heroTagline: 'request the pleasure of your company as they exchange vows',
+            dateText: '18th April 2027',
+            weddingDateTime: '2027-04-18T11:00:00',
+            calendarTitle: 'Amara & Josiah Wedding',
+            calendarDetails: "Save the date for Amara and Josiah's wedding on April 18, 2027. Ceremony: 11:00 AM at St. Augustine Gardens Chapel. Reception: 2:00 PM at The Mosi Pavilion.",
+            calendarLocation: 'St. Augustine Gardens Chapel, Plot 14, Riverside Drive, Kitwe',
+            envelopePrompt: 'Tap the envelope to open',
+            openingMessage: 'You are warmly invited to celebrate our special day.',
+            ceremonyVenue: 'St. Augustine Gardens Chapel',
+            ceremonyTime: '11:00 AM - Saturday',
+            ceremonyLocation: 'Plot 14, Riverside Drive, Kitwe',
+            ceremonyDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=St.%20Augustine%20Gardens%20Chapel%2C%20Plot%2014%2C%20Riverside%20Drive%2C%20Kitwe',
+            receptionVenue: 'The Mosi Pavilion',
+            receptionTime: '2:00 PM - Saturday',
+            receptionLocation: '27 Parklands Avenue, Kitwe',
+            receptionDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=The%20Mosi%20Pavilion%2C%2027%20Parklands%20Avenue%2C%20Kitwe',
+            dressCodeTitle: 'Elegant Garden Party',
+            dressCodeDescription: 'Soft, breathable fabrics in our wedding palette - flowing dresses, light suits, garden-ready shoes.',
+            ladiesHeading: 'Ladies Dress Code',
+            menHeading: "Men's Dress Code",
+            ladiesImageUrls: [
+                'https://www.nicea-mariage.com/img/robes-mariees/thumbnails/Eo7rN3Kk2EIdBWO_1600.jpg',
+                'https://www.weddingsinhouston.com/uploads/real_weddings/vivian-matt-real-wedding/RW-Vivian-Matt-TheGallery-CakesByGina-IvoryBridalAtelier-Ouisie-sTable-HIRES0256.jpg',
+                'https://i0.wp.com/bridalmusings.com/wp-content/uploads/2023/08/image-16.png?quality=80&resize=1140%2C760&ssl=1'
+            ],
+            ladiesCaptions: ['Flowing Dress', 'Elegant Gown', 'Garden Party'],
+            menImageUrls: [
+                'https://www.bentexsuits.com.au/assets/image/DC108951.jpg',
+                'https://images.squarespace-cdn.com/content/v1/5da5bb25a00bd00e72244aac/1662502210847-NHNX70WKRCD5INGPJ6D8/2206-07%2BSydney%2B%2B%2BConley%2BWedding%2B2035.jpg',
+                'https://icdn2.insideweddings.com/fit-in/1440x0/filters%3Aquality%2890%29/filters%3Ano_upscale%28%29/filters%3Astrip_icc%28%29/fileupload/2019/04/13/Eric%20Kelley-Kuhl-groom.jpg'
+            ],
+            menCaptions: ['Light Suit', 'Dress Shirt', 'Smart Casual'],
+            giftQuote: '"Your presence is our greatest gift. Should you wish to bless us further, contributions are warmly welcome."',
+            mobileMoneyLabel: 'Mobile Money',
+            mobileMoneyValue: '+260 97 000 0000',
+            bankLabel: 'Bank Transfer',
+            bankValue: 'Stanbic - 900 000 0000',
+            adultsOnly: 'Adults Only Event',
+            stayHeading: 'Nearby Rest',
+            stay1Name: 'Edinburgh Hotel',
+            stay1Detail: '8 min from venue - from K950/night',
+            stay1Phone: '+260000000000',
+            stay2Name: 'Hillcrest Guest Lodge',
+            stay2Detail: '12 min from venue - from K620/night',
+            stay2Phone: '+260000000000',
+            rsvpIntro: "We'd love to know if we can save you a seat."
+        };
 
         function setEnvelopeCopy(promptText) {
             var hint = document.getElementById('env-hint');
@@ -1346,7 +1395,7 @@
             hint.innerHTML = '<span class="names"></span> ' + promptText;
             var nameNode = hint.querySelector('.names');
             if (nameNode) {
-                nameNode.textContent = guestDisplayName || 'Amara & Josiah';
+                nameNode.textContent = guestDisplayName || siteSettings.coupleNames || 'Amara & Josiah';
             }
         }
 
@@ -1389,6 +1438,8 @@
             var guest = params.get('to');
             var inviteToken = params.get('invite');
 
+            loadPublicSiteSettings();
+
             if (guest) {
                 applyGuestPersonalization({ displayName: guest });
             } else {
@@ -1411,6 +1462,170 @@
                     });
             }
         })();
+
+        var WEDDING_DATE = new Date('2027-04-18T11:00:00');
+
+        function toDateOrDefault(value, fallback) {
+            var date = new Date(value || '');
+            return isNaN(date.getTime()) ? fallback : date;
+        }
+
+        function formatWeddingDate() {
+            return WEDDING_DATE.toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric'
+            });
+        }
+
+        function buildCalendarUrl() {
+            var eventDate = toDateOrDefault(siteSettings.weddingDateTime, WEDDING_DATE);
+            var nextDay = new Date(eventDate);
+            nextDay.setDate(nextDay.getDate() + 1);
+            var title = siteSettings.calendarTitle || 'Wedding Invitation';
+            var details = siteSettings.calendarDetails || '';
+            var location = siteSettings.calendarLocation || '';
+            var start = eventDate.getFullYear() + String(eventDate.getMonth() + 1).padStart(2, '0') + String(eventDate.getDate()).padStart(2, '0');
+            var end = nextDay.getFullYear() + String(nextDay.getMonth() + 1).padStart(2, '0') + String(nextDay.getDate()).padStart(2, '0');
+            return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
+                '&text=' + encodeURIComponent(title) +
+                '&dates=' + start + '/' + end +
+                '&details=' + encodeURIComponent(details) +
+                '&location=' + encodeURIComponent(location);
+        }
+
+        function setText(selector, value) {
+            var el = document.querySelector(selector);
+            if (el && value !== undefined && value !== null && value !== '') {
+                el.textContent = value;
+            }
+        }
+
+        function applySiteSettings(settings) {
+            if (!settings) return;
+            siteSettings = Object.assign({}, siteSettings, settings);
+            guestOpeningMessage = siteSettings.openingMessage || guestOpeningMessage;
+            WEDDING_DATE = toDateOrDefault(siteSettings.weddingDateTime, WEDDING_DATE);
+
+            if (!guestDisplayName) {
+                document.title = (siteSettings.coupleNames || 'Amara & Josiah') + " - You're Invited";
+            }
+
+            setText('#pg-hero .names', siteSettings.coupleNames);
+            setText('#pg-hero .tagline', siteSettings.heroTagline);
+            setText('#pg-hero .datebox', siteSettings.dateText);
+            setEnvelopeCopy(siteSettings.envelopePrompt || 'Tap the envelope to open');
+
+            var letterBody = document.querySelector('.env-letter-window .body');
+            if (letterBody && !guestDisplayName) {
+                letterBody.textContent = siteSettings.openingMessage || guestOpeningMessage;
+            }
+
+            var detailCards = document.querySelectorAll('#pg-details .card');
+            if (detailCards[0]) {
+                var ceremony = detailCards[0];
+                var ceremonyTitle = ceremony.querySelector('h3');
+                var ceremonyWhen = ceremony.querySelector('.when');
+                var ceremonyWhere = ceremony.querySelector('.where');
+                var ceremonyLink = ceremony.querySelector('a.btn');
+                if (ceremonyTitle) ceremonyTitle.textContent = siteSettings.ceremonyVenue || ceremonyTitle.textContent;
+                if (ceremonyWhen) ceremonyWhen.textContent = siteSettings.ceremonyTime || ceremonyWhen.textContent;
+                if (ceremonyWhere) ceremonyWhere.textContent = siteSettings.ceremonyLocation || ceremonyWhere.textContent;
+                if (ceremonyLink && siteSettings.ceremonyDirectionsUrl) ceremonyLink.href = siteSettings.ceremonyDirectionsUrl;
+            }
+            if (detailCards[1]) {
+                var reception = detailCards[1];
+                var receptionTitle = reception.querySelector('h3');
+                var receptionWhen = reception.querySelector('.when');
+                var receptionWhere = reception.querySelector('.where');
+                var receptionLink = reception.querySelector('a.btn');
+                if (receptionTitle) receptionTitle.textContent = siteSettings.receptionVenue || receptionTitle.textContent;
+                if (receptionWhen) receptionWhen.textContent = siteSettings.receptionTime || receptionWhen.textContent;
+                if (receptionWhere) receptionWhere.textContent = siteSettings.receptionLocation || receptionWhere.textContent;
+                if (receptionLink && siteSettings.receptionDirectionsUrl) receptionLink.href = siteSettings.receptionDirectionsUrl;
+            }
+
+            setText('#pg-dress h2', siteSettings.dressCodeTitle);
+            setText('#pg-dress p', siteSettings.dressCodeDescription);
+
+            var dressEyebrows = document.querySelectorAll('#pg-dress .eyebrow');
+            if (dressEyebrows[1]) dressEyebrows[1].textContent = siteSettings.ladiesHeading || dressEyebrows[1].textContent;
+            if (dressEyebrows[2]) dressEyebrows[2].textContent = siteSettings.menHeading || dressEyebrows[2].textContent;
+
+            var dressImages = document.querySelectorAll('#pg-dress .gallery img');
+            (siteSettings.ladiesImageUrls || []).forEach(function(src, index) {
+                if (dressImages[index] && src) dressImages[index].src = src;
+            });
+            (siteSettings.menImageUrls || []).forEach(function(src, index) {
+                if (dressImages[index + 3] && src) dressImages[index + 3].src = src;
+            });
+
+            var captionRows = document.querySelectorAll('#pg-dress div[style*="justify-content:space-around"]');
+            if (captionRows[0]) {
+                var ladyCaptions = captionRows[0].querySelectorAll('div');
+                (siteSettings.ladiesCaptions || []).forEach(function(text, index) {
+                    if (ladyCaptions[index]) ladyCaptions[index].textContent = text;
+                });
+            }
+            if (captionRows[1]) {
+                var manCaptions = captionRows[1].querySelectorAll('div');
+                (siteSettings.menCaptions || []).forEach(function(text, index) {
+                    if (manCaptions[index]) manCaptions[index].textContent = text;
+                });
+            }
+
+            setText('#pg-gifts .note-quote', siteSettings.giftQuote);
+            var giftRows = document.querySelectorAll('#pg-gifts .gift-row');
+            if (giftRows[0]) {
+                var mobileLabel = giftRows[0].querySelector('.lbl');
+                var mobileValue = giftRows[0].querySelector('.val');
+                var mobileCopy = giftRows[0].querySelector('.copy-btn');
+                if (mobileLabel) mobileLabel.textContent = siteSettings.mobileMoneyLabel || mobileLabel.textContent;
+                if (mobileValue) mobileValue.textContent = siteSettings.mobileMoneyValue || mobileValue.textContent;
+                if (mobileCopy) mobileCopy.setAttribute('data-copy', (siteSettings.mobileMoneyValue || '').replace(/s+/g, ''));
+            }
+            if (giftRows[1]) {
+                var bankLabel = giftRows[1].querySelector('.lbl');
+                var bankValue = giftRows[1].querySelector('.val');
+                var bankCopy = giftRows[1].querySelector('.copy-btn');
+                if (bankLabel) bankLabel.textContent = siteSettings.bankLabel || bankLabel.textContent;
+                if (bankValue) bankValue.textContent = siteSettings.bankValue || bankValue.textContent;
+                if (bankCopy) bankCopy.setAttribute('data-copy', siteSettings.bankValue || '');
+            }
+            setText('#pg-gifts .adults-only', siteSettings.adultsOnly);
+
+            setText('#pg-stay h2', siteSettings.stayHeading || 'Nearby Rest');
+            var stayCards = document.querySelectorAll('#pg-stay .stay-card');
+            if (stayCards[0]) {
+                var stay1Title = stayCards[0].querySelector('h3');
+                var stay1Detail = stayCards[0].querySelector('p');
+                var stay1Link = stayCards[0].querySelector('a.btn');
+                if (stay1Title) stay1Title.textContent = siteSettings.stay1Name || stay1Title.textContent;
+                if (stay1Detail) stay1Detail.textContent = siteSettings.stay1Detail || stay1Detail.textContent;
+                if (stay1Link && siteSettings.stay1Phone) stay1Link.href = 'tel:' + siteSettings.stay1Phone.replace(/[^0-9+]/g, '');
+            }
+            if (stayCards[1]) {
+                var stay2Title = stayCards[1].querySelector('h3');
+                var stay2Detail = stayCards[1].querySelector('p');
+                var stay2Link = stayCards[1].querySelector('a.btn');
+                if (stay2Title) stay2Title.textContent = siteSettings.stay2Name || stay2Title.textContent;
+                if (stay2Detail) stay2Detail.textContent = siteSettings.stay2Detail || stay2Detail.textContent;
+                if (stay2Link && siteSettings.stay2Phone) stay2Link.href = 'tel:' + siteSettings.stay2Phone.replace(/[^0-9+]/g, '');
+            }
+
+            setText('#pg-rsvp > p', siteSettings.rsvpIntro);
+            setCalendarLinks();
+            tickCountdown();
+        }
+
+        function loadPublicSiteSettings() {
+            fetch('/api/site-settings')
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    applySiteSettings(data.settings || {});
+                })
+                .catch(function() {});
+        }
 
         // ---------- Envelope open sequence ----------
         var envOverlay = document.getElementById('envelope-overlay');
@@ -1548,29 +1763,9 @@
         goTo(0);
 
         // ---------- Countdown ----------
-        var WEDDING_DATE = new Date('2027-04-18T11:00:00');
-
-        function formatWeddingDate() {
-            return WEDDING_DATE.toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric'
-            });
-        }
-
-        function buildCalendarUrl() {
-            var title = 'Amara & Josiah Wedding';
-            var details = 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at St. Augustine Gardens Chapel. Reception: 2:00 PM at The Mosi Pavilion.';
-            var location = 'St. Augustine Gardens Chapel, Plot 14, Riverside Drive, Kitwe';
-            return 'https://calendar.google.com/calendar/render?action=TEMPLATE' +
-                '&text=' + encodeURIComponent(title) +
-                '&dates=20270418/20270419' +
-                '&details=' + encodeURIComponent(details) +
-                '&location=' + encodeURIComponent(location);
-        }
-
         function setCalendarLinks() {
             var saveBtn = document.getElementById('save-date-btn');
+            if (!saveBtn) return;
             saveBtn.href = buildCalendarUrl();
             saveBtn.textContent = 'Save the Date';
             saveBtn.removeAttribute('download');

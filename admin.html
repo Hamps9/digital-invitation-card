@@ -148,6 +148,8 @@
       white-space: nowrap;
     }
     .copy-line { margin-top: 10px; font-size: 12px; color: var(--muted); word-break: break-word; }
+    .settings-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+    .settings-section h3 { margin: 0 0 14px; font-size: 18px; font-family: Georgia, 'Times New Roman', serif; }
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       .row { grid-template-columns: 1fr; }
@@ -222,6 +224,18 @@
         <div class="list" id="invite-list"></div>
         <div class="status" id="list-status"></div>
       </div>
+      <div class="panel" style="grid-column: 1 / -1;">
+        <h2>Customize Invitation</h2>
+        <div class="hint">Update the public wedding card here. Changes appear on the invitation page after saving.</div>
+        <form id="settings-form">
+          <div id="settings-fields"></div>
+          <div class="actions">
+            <button type="submit" class="btn">Save Invitation Settings</button>
+            <button type="button" class="btn ghost" id="reset-settings-btn">Reset Form</button>
+          </div>
+          <div class="status" id="settings-status"></div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -273,7 +287,7 @@
       title.textContent = invite.displayName || '(Unnamed invite)';
       const meta = document.createElement('p');
       meta.className = 'meta';
-      meta.textContent = `${invite.inviteType || 'custom'} · ${invite.createdAt ? new Date(invite.createdAt).toLocaleString() : ''}`;
+      meta.textContent = `${invite.inviteType || 'custom'} ï¿½ ${invite.createdAt ? new Date(invite.createdAt).toLocaleString() : ''}`;
       info.appendChild(title);
       info.appendChild(meta);
 
@@ -408,7 +422,207 @@
       }
     });
 
-    ensureAuth().then(loadInvites);
+    const settingsForm = document.getElementById('settings-form');
+    const settingsFields = document.getElementById('settings-fields');
+    const settingsStatus = document.getElementById('settings-status');
+    const resetSettingsBtn = document.getElementById('reset-settings-btn');
+    let originalSettings = {};
+
+    const settingsSections = [
+      {
+        title: 'Main Details',
+        groups: [
+          [{ name: 'coupleNames', label: 'Couple names', type: 'text', placeholder: 'Amara & Josiah' }],
+          [{ name: 'heroTagline', label: 'Hero tagline', type: 'textarea', placeholder: 'request the pleasure of your company as they exchange vows' }],
+          [
+            { name: 'dateText', label: 'Display date', type: 'text', placeholder: '18th April 2027' },
+            { name: 'weddingDateTime', label: 'Wedding date and time', type: 'datetime-local' }
+          ],
+          [{ name: 'openingMessage', label: 'Envelope opening message', type: 'textarea', placeholder: 'You are warmly invited to celebrate our special day.' }],
+          [{ name: 'envelopePrompt', label: 'Envelope prompt', type: 'text', placeholder: 'Tap the envelope to open' }],
+          [{ name: 'rsvpIntro', label: 'RSVP intro', type: 'textarea', placeholder: "We'd love to know if we can save you a seat." }]
+        ]
+      },
+      {
+        title: 'Calendar',
+        groups: [
+          [{ name: 'calendarTitle', label: 'Calendar title', type: 'text', placeholder: 'Amara & Josiah Wedding' }],
+          [{ name: 'calendarDetails', label: 'Calendar details', type: 'textarea', placeholder: 'Save the date for the wedding...' }],
+          [{ name: 'calendarLocation', label: 'Calendar location', type: 'text', placeholder: 'St. Augustine Gardens Chapel' }]
+        ]
+      },
+      {
+        title: 'Venue Details',
+        groups: [
+          [
+            { name: 'ceremonyVenue', label: 'Ceremony venue', type: 'text' },
+            { name: 'ceremonyTime', label: 'Ceremony time', type: 'text', placeholder: '11:00 AM - Saturday' }
+          ],
+          [{ name: 'ceremonyLocation', label: 'Ceremony location', type: 'text' }],
+          [{ name: 'ceremonyDirectionsUrl', label: 'Ceremony directions link', type: 'text' }],
+          [
+            { name: 'receptionVenue', label: 'Reception venue', type: 'text' },
+            { name: 'receptionTime', label: 'Reception time', type: 'text', placeholder: '2:00 PM - Saturday' }
+          ],
+          [{ name: 'receptionLocation', label: 'Reception location', type: 'text' }],
+          [{ name: 'receptionDirectionsUrl', label: 'Reception directions link', type: 'text' }]
+        ]
+      },
+      {
+        title: 'Dress Code',
+        groups: [
+          [{ name: 'dressCodeTitle', label: 'Dress code title', type: 'text', placeholder: 'Elegant Garden Party' }],
+          [{ name: 'dressCodeDescription', label: 'Dress code description', type: 'textarea', placeholder: 'Soft, breathable fabrics...' }],
+          [{ name: 'ladiesHeading', label: 'Ladies heading', type: 'text', placeholder: 'Ladies Dress Code' }],
+          [{ name: 'ladiesImageUrls', label: 'Ladies image URLs', type: 'textarea', placeholder: 'One URL per line' }],
+          [{ name: 'ladiesCaptions', label: 'Ladies captions', type: 'textarea', placeholder: 'One caption per line' }],
+          [{ name: 'menHeading', label: 'Men heading', type: 'text', placeholder: "Men's Dress Code" }],
+          [{ name: 'menImageUrls', label: 'Men image URLs', type: 'textarea', placeholder: 'One URL per line' }],
+          [{ name: 'menCaptions', label: 'Men captions', type: 'textarea', placeholder: 'One caption per line' }]
+        ]
+      },
+      {
+        title: 'Gifts and Stay',
+        groups: [
+          [{ name: 'giftQuote', label: 'Gift note', type: 'textarea' }],
+          [
+            { name: 'mobileMoneyLabel', label: 'Mobile money label', type: 'text' },
+            { name: 'mobileMoneyValue', label: 'Mobile money value', type: 'text' }
+          ],
+          [
+            { name: 'bankLabel', label: 'Bank label', type: 'text' },
+            { name: 'bankValue', label: 'Bank value', type: 'text' }
+          ],
+          [{ name: 'adultsOnly', label: 'Adults only note', type: 'text' }],
+          [{ name: 'stayHeading', label: 'Stay heading', type: 'text', placeholder: 'Where To Stay' }],
+          [
+            { name: 'stay1Name', label: 'Stay option 1 name', type: 'text' },
+            { name: 'stay1Detail', label: 'Stay option 1 detail', type: 'text' }
+          ],
+          [{ name: 'stay1Phone', label: 'Stay option 1 phone', type: 'text' }],
+          [
+            { name: 'stay2Name', label: 'Stay option 2 name', type: 'text' },
+            { name: 'stay2Detail', label: 'Stay option 2 detail', type: 'text' }
+          ],
+          [{ name: 'stay2Phone', label: 'Stay option 2 phone', type: 'text' }]
+        ]
+      }
+    ];
+
+    function toFieldValue(value, field) {
+      if (Array.isArray(value)) return value.join(String.fromCharCode(10));
+      if (field.type === 'datetime-local' && value) {
+        return String(value).slice(0, 16);
+      }
+      return value == null ? '' : String(value);
+    }
+
+    function createField(field, value) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+
+      const label = document.createElement('label');
+      label.setAttribute('for', field.name);
+      label.textContent = field.label;
+      wrap.appendChild(label);
+
+      let input;
+      if (field.type === 'textarea') {
+        input = document.createElement('textarea');
+        input.rows = field.rows || 3;
+      } else {
+        input = document.createElement('input');
+        input.type = field.type || 'text';
+      }
+
+      input.id = field.name;
+      input.name = field.name;
+      input.placeholder = field.placeholder || '';
+      input.value = toFieldValue(value, field);
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    function renderSettingsForm(settings) {
+      settingsFields.innerHTML = '';
+      settingsSections.forEach(section => {
+        const sectionEl = document.createElement('div');
+        sectionEl.className = 'settings-section';
+        const heading = document.createElement('h3');
+        heading.textContent = section.title;
+        sectionEl.appendChild(heading);
+
+        section.groups.forEach(group => {
+          if (group.length === 2) {
+            const row = document.createElement('div');
+            row.className = 'row';
+            group.forEach(field => row.appendChild(createField(field, settings[field.name])));
+            sectionEl.appendChild(row);
+          } else {
+            sectionEl.appendChild(createField(group[0], settings[group[0].name]));
+          }
+        });
+
+        settingsFields.appendChild(sectionEl);
+      });
+    }
+
+    function setSettingsStatus(message, error) {
+      settingsStatus.textContent = message || '';
+      settingsStatus.style.color = error ? '#a14b39' : '';
+    }
+
+    async function loadSiteSettings() {
+      setSettingsStatus('Loading invitation settings...');
+      try {
+        const { res, data } = await requestJson('/api/admin/site-settings');
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = '/admin';
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Unable to load settings');
+        originalSettings = data.settings || {};
+        renderSettingsForm(originalSettings);
+        setSettingsStatus('Invitation settings loaded.');
+      } catch (err) {
+        setSettingsStatus(err.message || 'Unable to load settings', true);
+      }
+    }
+
+    async function saveSiteSettings(event) {
+      event.preventDefault();
+      setSettingsStatus('Saving invitation settings...');
+      try {
+        const payload = Object.fromEntries(new FormData(settingsForm).entries());
+        const { res, data } = await requestJson('/api/admin/site-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = '/admin';
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Unable to save settings');
+        originalSettings = data.settings || payload;
+        renderSettingsForm(originalSettings);
+        setSettingsStatus('Invitation settings saved.');
+      } catch (err) {
+        setSettingsStatus(err.message || 'Unable to save settings', true);
+      }
+    }
+
+    resetSettingsBtn.addEventListener('click', () => {
+      renderSettingsForm(originalSettings);
+      setSettingsStatus('Form reset to the last saved values.');
+    });
+
+    settingsForm.addEventListener('submit', saveSiteSettings);
+
+    ensureAuth().then(() => {
+      loadInvites();
+      loadSiteSettings();
+    });
   </script>
 </body>
 </html>
