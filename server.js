@@ -68,18 +68,18 @@ const DEFAULT_SITE_SETTINGS = {
     dateText: '18th April 2027',
     weddingDateTime: '2027-04-18T11:00:00',
     calendarTitle: 'Amara & Josiah Wedding',
-    calendarDetails: 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at St. Augustine Gardens Chapel. Reception: 2:00 PM at The Mosi Pavilion.',
-    calendarLocation: 'St. Augustine Gardens Chapel, Plot 14, Riverside Drive, Kitwe',
+    calendarDetails: 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
+    calendarLocation: '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
     envelopePrompt: 'Tap the envelope to open',
     openingMessage: 'You are warmly invited to celebrate our special day.',
-    ceremonyVenue: 'St. Augustine Gardens Chapel',
+    ceremonyVenue: '1 John Akapelwa Rd',
     ceremonyTime: '11:00 AM - Saturday',
-    ceremonyLocation: 'Plot 14, Riverside Drive, Kitwe',
-    ceremonyDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=St.%20Augustine%20Gardens%20Chapel%2C%20Plot%2014%2C%20Riverside%20Drive%2C%20Kitwe',
-    receptionVenue: 'The Mosi Pavilion',
+    ceremonyLocation: '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
+    ceremonyDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=1%20John%20Akapelwa%20Rd%2C%20Lusaka%2C%2010101%2C%20Lusaka%2C%20Zambia',
+    receptionVenue: '1 John Akapelwa Rd',
     receptionTime: '2:00 PM - Saturday',
-    receptionLocation: '27 Parklands Avenue, Kitwe',
-    receptionDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=The%20Mosi%20Pavilion%2C%2027%20Parklands%20Avenue%2C%20Kitwe',
+    receptionLocation: '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
+    receptionDirectionsUrl: 'https://www.google.com/maps/dir/?api=1&destination=1%20John%20Akapelwa%20Rd%2C%20Lusaka%2C%2010101%2C%20Lusaka%2C%20Zambia',
     dressCodeTitle: 'Elegant Garden Party',
     dressCodeDescription: 'Soft, breathable fabrics in our wedding palette - flowing dresses, light suits, garden-ready shoes.',
     ladiesHeading: 'Ladies Dress Code',
@@ -112,7 +112,7 @@ const DEFAULT_SITE_SETTINGS = {
     rsvpIntro: "We'd love to know if we can save you a seat."
 };
 
-const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim().replace(/\/+$/, '');
 const SUPABASE_SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '').trim();
 const SUPABASE_REST_URL = SUPABASE_URL ? SUPABASE_URL + '/rest/v1' : '';
 const SUPABASE_STORAGE_URL = SUPABASE_URL ? SUPABASE_URL + '/storage/v1' : '';
@@ -294,18 +294,27 @@ function defaultOpeningMessage(type) {
 }
 
 async function readInviteStore() {
+    const localInvites = await readLocalInviteStore();
     if (hasSupabaseConfig()) {
         try {
             const { res, data } = await supabaseRequest('/invites?select=token,invite,created_at,updated_at&order=created_at.desc', {
                 method: 'GET'
             });
             if (res.ok && Array.isArray(data)) {
-                const mapped = data.map(normalizeSupabaseInviteRecord).filter(invite => invite.token);
-                if (mapped.length) return mapped;
+                const remoteInvites = data.map(normalizeSupabaseInviteRecord).filter(invite => invite.token);
+                const remoteTokens = new Set(remoteInvites.map(invite => invite.token));
+                const merged = remoteInvites.concat(localInvites.filter(invite => invite && invite.token && !remoteTokens.has(invite.token)));
+
+                await writeLocalInviteStore(merged);
+                if (merged.length > remoteInvites.length) {
+                    try {
+                        await writeInviteStore(merged);
+                    } catch {}
+                }
+                return merged;
             }
         } catch {}
 
-        const localInvites = await readLocalInviteStore();
         if (localInvites.length) {
             try {
                 await writeInviteStore(localInvites);
@@ -319,6 +328,8 @@ async function readInviteStore() {
 
 async function writeInviteStore(invites) {
     const normalized = Array.isArray(invites) ? invites : [];
+    await writeLocalInviteStore(normalized);
+
     if (hasSupabaseConfig()) {
         const rows = normalized.map(invite => ({
             token: invite.token,
@@ -346,8 +357,6 @@ async function writeInviteStore(invites) {
             throw new Error('Failed to save invite records to Supabase');
         }
     }
-
-    await writeLocalInviteStore(normalized);
 }
 
 function cloneDefaultSiteSettings() {
@@ -418,9 +427,9 @@ async function uploadImageDataUrl(dataUrl, objectPath) {
 
     if (!res.ok) {
         const detail = typeof data === 'string' ? data : (data && data.message) || (data && data.error) || ('HTTP ' + res.status);
-        const bucketHint = res.status === 404 || /bucket/i.test(String(detail))
-            ? " Make sure storage bucket 'invitation-images' exists by running supabase-schema.sql in Supabase."
-            : '';
+        const bucketHint = res.status === 404 || /bucket/i.test(String(detail)) ?
+            " Make sure storage bucket 'invitation-images' exists by running supabase-schema.sql in Supabase." :
+            '';
         throw new Error('Failed to upload image to Supabase Storage: ' + detail + bucketHint);
     }
 
@@ -517,6 +526,39 @@ function normalizeSiteSettings(body = {}) {
     return settings;
 }
 
+function migrateLegacyVenueSettings(settings) {
+    const normalized = normalizeSiteSettings(settings);
+    const legacyValues = [
+        'St. Augustine Gardens Chapel',
+        'Plot 14, Riverside Drive, Kitwe',
+        'The Mosi Pavilion',
+        '27 Parklands Avenue, Kitwe'
+    ];
+    const hasLegacyVenue = [
+        normalized.calendarLocation,
+        normalized.ceremonyVenue,
+        normalized.ceremonyLocation,
+        normalized.receptionVenue,
+        normalized.receptionLocation
+    ].some(value => legacyValues.includes(value));
+
+    if (!hasLegacyVenue) return { settings: normalized, changed: false };
+
+    const migrated = {
+        ...normalized,
+        calendarDetails: 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
+        calendarLocation: DEFAULT_SITE_SETTINGS.calendarLocation,
+        ceremonyVenue: DEFAULT_SITE_SETTINGS.ceremonyVenue,
+        ceremonyLocation: DEFAULT_SITE_SETTINGS.ceremonyLocation,
+        ceremonyDirectionsUrl: DEFAULT_SITE_SETTINGS.ceremonyDirectionsUrl,
+        receptionVenue: DEFAULT_SITE_SETTINGS.receptionVenue,
+        receptionLocation: DEFAULT_SITE_SETTINGS.receptionLocation,
+        receptionDirectionsUrl: DEFAULT_SITE_SETTINGS.receptionDirectionsUrl
+    };
+
+    return { settings: migrated, changed: true };
+}
+
 async function readSiteSettings() {
     if (hasSupabaseConfig()) {
         try {
@@ -524,7 +566,13 @@ async function readSiteSettings() {
                 method: 'GET'
             });
             if (res.ok && Array.isArray(data) && data.length) {
-                return normalizeSiteSettingsRecord(data[0]);
+                const migration = migrateLegacyVenueSettings(normalizeSiteSettingsRecord(data[0]));
+                if (migration.changed) {
+                    try {
+                        await writeSiteSettings(migration.settings);
+                    } catch {}
+                }
+                return migration.settings;
             }
         } catch {}
 
@@ -677,7 +725,12 @@ function hasAdminAccess(req) {
 }
 
 async function sendJson(res, statusCode, payload, extraHeaders = {}) {
-    res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8', ...extraHeaders });
+    res.writeHead(statusCode, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        ...extraHeaders
+    });
     res.end(JSON.stringify(payload));
 }
 

@@ -18,3 +18,18 @@ alter table public.invites enable row level security;
 insert into storage.buckets (id, name, public)
 values ('invitation-images', 'invitation-images', true)
 on conflict (id) do nothing;
+
+update public.site_settings
+set settings = settings
+  || jsonb_build_object(
+    'calendarDetails', 'Save the date for Amara and Josiah''s wedding on April 18, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
+    'calendarLocation', '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
+    'ceremonyVenue', '1 John Akapelwa Rd',
+    'ceremonyLocation', '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
+    'ceremonyDirectionsUrl', 'https://www.google.com/maps/dir/?api=1&destination=1%20John%20Akapelwa%20Rd%2C%20Lusaka%2C%2010101%2C%20Lusaka%2C%20Zambia',
+    'receptionVenue', '1 John Akapelwa Rd',
+    'receptionLocation', '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
+    'receptionDirectionsUrl', 'https://www.google.com/maps/dir/?api=1&destination=1%20John%20Akapelwa%20Rd%2C%20Lusaka%2C%2010101%2C%20Lusaka%2C%20Zambia'
+  ),
+  updated_at = now()
+where id = 'default';
