@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: digital-invitation-card
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: ADMIN_SECRET
+        sync: false

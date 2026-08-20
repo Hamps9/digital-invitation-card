@@ -1,0 +1,18 @@
+[
+  {
+    "token": "156a94be6f8b",
+    "displayName": "Dennis Hampwaya",
+    "inviteType": "individual",
+    "openingMessage": "You are warmly invited to celebrate our special day.",
+    "createdAt": "2026-08-17T11:08:19.464Z",
+    "updatedAt": "2026-08-17T11:08:19.464Z"
+  },
+  {
+    "token": "320a209122d5",
+    "displayName": "The Nsamba Family",
+    "inviteType": "family",
+    "openingMessage": "You and your family are warmly invited to celebrate our special day.",
+    "createdAt": "2026-08-17T09:00:41.546Z",
+    "updatedAt": "2026-08-17T09:00:41.546Z"
+  }
+]

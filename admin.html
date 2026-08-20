@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitation Admin</title>
+  <style>
+    :root {
+      --bg: #f7f1e8;
+      --panel: #fffaf4;
+      --ink: #2b2a26;
+      --muted: #6c665d;
+      --sage: #6a5d58;
+      --gold: #b08d3e;
+      --line: rgba(106, 93, 88, 0.16);
+      --shadow: 0 20px 50px rgba(43, 42, 38, 0.12);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(176, 141, 62, 0.16), transparent 28%),
+        radial-gradient(circle at top right, rgba(176, 141, 62, 0.10), transparent 24%),
+        linear-gradient(180deg, #fbf6ef 0%, #f2eadf 100%);
+      min-height: 100vh;
+      padding: 32px 18px 48px;
+    }
+
+    .wrap { max-width: 1120px; margin: 0 auto; }
+    .hero { display: grid; gap: 14px; margin-bottom: 24px; }
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 11px;
+      color: var(--sage);
+      font-weight: 700;
+    }
+    h1 {
+      margin: 0;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(30px, 5vw, 48px);
+      line-height: 1.02;
+    }
+    .sub { margin: 0; max-width: 760px; color: var(--muted); line-height: 1.6; }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 250, 244, 0.86);
+      box-shadow: var(--shadow);
+    }
+    .bar strong { font-size: 14px; }
+    .bar span { color: var(--muted); font-size: 13px; }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      background: var(--sage);
+      color: white;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--sage);
+      border: 1px solid rgba(106, 93, 88, 0.22);
+    }
+    .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; }
+    .panel {
+      background: rgba(255, 250, 244, 0.92);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+      backdrop-filter: blur(6px);
+    }
+    .panel h2 {
+      margin: 0 0 16px;
+      font-size: 20px;
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+    .field { display: grid; gap: 8px; margin-bottom: 14px; }
+    label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--sage);
+    }
+    input, select, textarea, button { font: inherit; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid rgba(106, 93, 88, 0.18);
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px 14px;
+      color: var(--ink);
+    }
+    textarea { min-height: 100px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr 180px; gap: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .hint, .status { font-size: 13px; color: var(--muted); line-height: 1.55; }
+    .status { margin-top: 10px; min-height: 20px; }
+    .generated {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 14px;
+      border-radius: 14px;
+      background: rgba(176, 141, 62, 0.08);
+      border: 1px solid rgba(176, 141, 62, 0.16);
+      word-break: break-word;
+    }
+    .generated a { color: var(--sage); font-weight: 700; text-decoration: none; }
+    .list { display: grid; gap: 12px; margin-top: 10px; }
+    .invite-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fff;
+    }
+    .invite-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .invite-name { font-weight: 700; font-size: 16px; margin: 0 0 4px; }
+    .meta { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.45; }
+    .small-btn {
+      border: 1px solid rgba(106, 93, 88, 0.2);
+      background: #fff;
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--sage);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .copy-line { margin-top: 10px; font-size: 12px; color: var(--muted); word-break: break-word; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
+      .bar { flex-direction: column; align-items: flex-start; }
+      body { padding: 18px 14px 36px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Protected Admin</div>
+      <h1>Generate exact-name invite links</h1>
+      <p class="sub">This dashboard is only available after signing in through the admin access point. Use it to create links for families, couples, or individual guests without changing the main invitation template.</p>
+    </div>
+
+    <div class="bar">
+      <div>
+        <strong>Signed-in admin</strong><br>
+        <span>Manage invite records and generate personalized links from here.</span>
+      </div>
+      <div class="actions" style="margin-top:0;">
+        <button type="button" class="btn ghost" id="refresh-btn">Refresh List</button>
+        <button type="button" class="btn" id="logout-btn">Log out</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Create Invite</h2>
+        <form id="invite-form">
+          <div class="field">
+            <label for="display-name">Display name</label>
+            <input id="display-name" name="displayName" type="text" placeholder="The Moyo Family / John & Jane Doe / Dr. Mary Okoro" required>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="invite-type">Invite type</label>
+              <select id="invite-type" name="inviteType">
+                <option value="individual">Individual</option>
+                <option value="couple">Couple</option>
+                <option value="family">Family</option>
+                <option value="custom" selected>Custom</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="short-label">Internal label</label>
+              <input id="short-label" type="text" placeholder="Optional note" maxlength="48">
+            </div>
+          </div>
+          <div class="field">
+            <label for="opening-message">Envelope opening message</label>
+            <textarea id="opening-message" name="openingMessage" placeholder="You are warmly invited to celebrate our special day."></textarea>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn">Generate Link</button>
+          </div>
+          <div class="status" id="form-status"></div>
+          <div class="generated" id="generated" hidden>
+            <strong>Generated link</strong>
+            <a id="generated-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+            <div class="actions" style="margin-top:0;">
+              <button type="button" class="small-btn" id="copy-link-btn">Copy link</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>Invite List</h2>
+        <div class="hint">Recent invites appear here so you can quickly copy or review them.</div>
+        <div class="list" id="invite-list"></div>
+        <div class="status" id="list-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('invite-form');
+    const formStatus = document.getElementById('form-status');
+    const listStatus = document.getElementById('list-status');
+    const inviteList = document.getElementById('invite-list');
+    const generated = document.getElementById('generated');
+    const generatedLink = document.getElementById('generated-link');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
+    const refreshBtn = document.getElementById('refresh-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const displayNameInput = document.getElementById('display-name');
+    const typeInput = document.getElementById('invite-type');
+    const openingInput = document.getElementById('opening-message');
+    const defaultMessage = 'You are warmly invited to celebrate our special day.';
+
+    openingInput.value = defaultMessage;
+
+    function setStatus(el, message, error) {
+      el.textContent = message || '';
+      el.style.color = error ? '#a14b39' : '';
+    }
+
+    async function requestJson(url, options) {
+      const res = await fetch(url, { credentials: 'same-origin', ...options });
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    }
+
+    async function ensureAuth() {
+      const { res, data } = await requestJson('/api/admin/config');
+      if (!res.ok || !data.authenticated) {
+        window.location.href = '/admin';
+      }
+    }
+
+    function buildCard(invite) {
+      const card = document.createElement('div');
+      card.className = 'invite-card';
+
+      const top = document.createElement('div');
+      top.className = 'invite-top';
+
+      const info = document.createElement('div');
+      const title = document.createElement('p');
+      title.className = 'invite-name';
+      title.textContent = invite.displayName || '(Unnamed invite)';
+      const meta = document.createElement('p');
+      meta.className = 'meta';
+      meta.textContent = `${invite.inviteType || 'custom'} · ${invite.createdAt ? new Date(invite.createdAt).toLocaleString() : ''}`;
+      info.appendChild(title);
+      info.appendChild(meta);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'small-btn';
+      copyBtn.textContent = 'Copy link';
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(invite.link);
+          copyBtn.textContent = 'Copied';
+          setTimeout(() => (copyBtn.textContent = 'Copy link'), 1200);
+        } catch {
+          window.prompt('Copy this link', invite.link);
+        }
+      });
+
+      top.appendChild(info);
+      top.appendChild(copyBtn);
+
+      const link = document.createElement('div');
+      link.className = 'copy-line';
+      link.textContent = invite.link;
+
+      const message = document.createElement('div');
+      message.className = 'copy-line';
+      message.textContent = invite.openingMessage || '';
+
+      card.appendChild(top);
+      card.appendChild(link);
+      card.appendChild(message);
+      return card;
+    }
+
+    async function loadInvites() {
+      setStatus(listStatus, 'Loading invites...');
+      inviteList.innerHTML = '';
+      try {
+        const { res, data } = await requestJson('/api/admin/invites');
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = '/admin';
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Unable to load invites');
+
+        const invites = data.invites || [];
+        if (!invites.length) {
+          setStatus(listStatus, 'No invites created yet.');
+          return;
+        }
+
+        setStatus(listStatus, `${invites.length} invite${invites.length === 1 ? '' : 's'} ready.`);
+        invites.forEach(invite => inviteList.appendChild(buildCard(invite)));
+      } catch (err) {
+        setStatus(listStatus, err.message, true);
+      }
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      generated.hidden = true;
+      setStatus(formStatus, 'Generating invite link...');
+
+      const body = {
+        displayName: displayNameInput.value.trim(),
+        inviteType: typeInput.value,
+        openingMessage: openingInput.value.trim(),
+        label: document.getElementById('short-label').value.trim()
+      };
+
+      try {
+        const { res, data } = await requestJson('/api/admin/invites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = '/admin';
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Unable to create invite');
+
+        generated.hidden = false;
+        generatedLink.textContent = data.invite.link;
+        generatedLink.href = data.invite.link;
+        setStatus(formStatus, `Created invite for ${data.invite.displayName}.`);
+        await loadInvites();
+      } catch (err) {
+        setStatus(formStatus, err.message, true);
+      }
+    });
+
+    copyLinkBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(generatedLink.href);
+        copyLinkBtn.textContent = 'Copied';
+        setTimeout(() => (copyLinkBtn.textContent = 'Copy link'), 1200);
+      } catch {
+        window.prompt('Copy this link', generatedLink.href);
+      }
+    });
+
+    refreshBtn.addEventListener('click', loadInvites);
+
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      } finally {
+        window.location.href = '/admin';
+      }
+    });
+
+    displayNameInput.addEventListener('input', () => {
+      if (!openingInput.value.trim()) {
+        const type = typeInput.value;
+        openingInput.value = type === 'family'
+          ? 'You and your family are warmly invited to celebrate our special day.'
+          : type === 'couple'
+            ? 'You are warmly invited to celebrate our special day together.'
+            : defaultMessage;
+      }
+    });
+
+    typeInput.addEventListener('change', () => {
+      if (!openingInput.value.trim() || openingInput.value.trim() === defaultMessage) {
+        const type = typeInput.value;
+        openingInput.value = type === 'family'
+          ? 'You and your family are warmly invited to celebrate our special day.'
+          : type === 'couple'
+            ? 'You are warmly invited to celebrate our special day together.'
+            : defaultMessage;
+      }
+    });
+
+    ensureAuth().then(loadInvites);
+  </script>
+</body>
+</html>

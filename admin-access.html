@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Access</title>
+  <style>
+    :root {
+      --bg: #f7f1e8;
+      --panel: #fffaf4;
+      --ink: #2b2a26;
+      --muted: #6c665d;
+      --sage: #6a5d58;
+      --line: rgba(106, 93, 88, 0.16);
+      --shadow: 0 20px 50px rgba(43, 42, 38, 0.12);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(176, 141, 62, 0.16), transparent 28%),
+        radial-gradient(circle at top right, rgba(176, 141, 62, 0.10), transparent 24%),
+        linear-gradient(180deg, #fbf6ef 0%, #f2eadf 100%);
+      padding: 24px;
+    }
+    .card {
+      width: min(520px, 100%);
+      background: rgba(255, 250, 244, 0.95);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+      backdrop-filter: blur(6px);
+    }
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 11px;
+      color: var(--sage);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: clamp(28px, 5vw, 40px);
+      line-height: 1.05;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .field { display: grid; gap: 8px; margin-bottom: 14px; }
+    label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--sage);
+    }
+    input, button {
+      font: inherit;
+    }
+    input {
+      width: 100%;
+      border: 1px solid rgba(106, 93, 88, 0.18);
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px 14px;
+      color: var(--ink);
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      background: var(--sage);
+      color: #fff;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .status {
+      margin-top: 12px;
+      min-height: 20px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .status.error { color: #a14b39; }
+    .note {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    code {
+      background: rgba(106, 93, 88, 0.08);
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">Admin Access Point</div>
+    <h1>Sign in to manage invitations</h1>
+    <p>This page is the entry point for the protected admin area. Enter the access code from your server environment to open the dashboard.</p>
+
+    <form id="access-form">
+      <div class="field">
+        <label for="password">Access code</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Enter ADMIN_SECRET" required>
+      </div>
+      <div class="actions">
+        <button type="submit">Open Admin</button>
+      </div>
+      <div class="status" id="status"></div>
+    </form>
+
+    <div class="note" id="config-note">Checking server configuration...</div>
+  </main>
+
+  <script>
+    const form = document.getElementById('access-form');
+    const password = document.getElementById('password');
+    const statusEl = document.getElementById('status');
+    const noteEl = document.getElementById('config-note');
+
+    function setStatus(message, error) {
+      statusEl.textContent = message || '';
+      statusEl.className = error ? 'status error' : 'status';
+    }
+
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/admin/config', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (data.authenticated) {
+          window.location.href = '/admin';
+          return;
+        }
+        noteEl.textContent = data.requiresAuth
+          ? 'The admin area is protected. Enter the access code to continue.'
+          : 'Admin access is not configured yet. Set ADMIN_SECRET in .env and restart the server.';
+      } catch {
+        noteEl.textContent = 'Unable to read server configuration right now.';
+      }
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setStatus('Signing in...');
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: password.value })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Invalid access code');
+        window.location.href = data.redirectTo || '/admin';
+      } catch (err) {
+        setStatus(err.message || 'Sign in failed', true);
+      }
+    });
+
+    loadConfig();
+    password.focus();
+  </script>
+</body>
+</html>
