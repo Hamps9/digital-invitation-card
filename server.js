@@ -65,10 +65,10 @@ const SITE_SETTINGS_FILE = path.join(ROOT, 'site-settings.json');
 const DEFAULT_SITE_SETTINGS = {
     coupleNames: 'Amara & Josiah',
     heroTagline: 'request the pleasure of your company as they exchange vows',
-    dateText: '18th April 2027',
-    weddingDateTime: '2027-04-18T11:00:00',
+    dateText: '8th May 2027',
+    weddingDateTime: '2027-05-08T11:00:00',
     calendarTitle: 'Amara & Josiah Wedding',
-    calendarDetails: 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
+    calendarDetails: 'Save the date for Amara and Josiah\'s wedding on May 8, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
     calendarLocation: '1 John Akapelwa Rd, Lusaka, 10101, Lusaka, Zambia',
     envelopePrompt: 'Tap the envelope to open',
     openingMessage: 'You are warmly invited to celebrate our special day.',
@@ -546,7 +546,7 @@ function migrateLegacyVenueSettings(settings) {
 
     const migrated = {
         ...normalized,
-        calendarDetails: 'Save the date for Amara and Josiah\'s wedding on April 18, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
+        calendarDetails: 'Save the date for Amara and Josiah\'s wedding on May 8, 2027. Ceremony: 11:00 AM at 1 John Akapelwa Rd. Reception: 2:00 PM at 1 John Akapelwa Rd.',
         calendarLocation: DEFAULT_SITE_SETTINGS.calendarLocation,
         ceremonyVenue: DEFAULT_SITE_SETTINGS.ceremonyVenue,
         ceremonyLocation: DEFAULT_SITE_SETTINGS.ceremonyLocation,
