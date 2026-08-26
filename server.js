@@ -51,6 +51,7 @@ const INVITATION_FILE = path.join(ROOT, 'Invitation Card.html');
 const ADMIN_FILE = path.join(ROOT, 'admin.html');
 const ADMIN_ACCESS_FILE = path.join(ROOT, 'admin-access.html');
 const INVITES_FILE = path.join(ROOT, 'invites.json');
+const RSVPS_FILE = path.join(ROOT, 'rsvps.json');
 const ADMIN_SECRET = getAdminSecret();
 const ADMIN_NO_CACHE_HEADERS = {
     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -218,6 +219,82 @@ async function writeLocalInviteStore(invites) {
     const tmpFile = INVITES_FILE + '.tmp';
     await fsp.writeFile(tmpFile, JSON.stringify(invites, null, 2), 'utf8');
     await fsp.rename(tmpFile, INVITES_FILE);
+}
+
+async function readLocalRsvpStore() {
+    try {
+        const raw = await fsp.readFile(RSVPS_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+async function writeLocalRsvpStore(rsvps) {
+    const tmpFile = RSVPS_FILE + '.tmp';
+    await fsp.writeFile(tmpFile, JSON.stringify(rsvps, null, 2), 'utf8');
+    await fsp.rename(tmpFile, RSVPS_FILE);
+}
+
+function normalizeRsvpRecord(record) {
+    return {
+        id: cleanText(record.id, 64),
+        name: cleanText(record.name, 120),
+        phone: cleanText(record.phone, 40),
+        attending: 'yes',
+        attendingText: 'Joyfully Yes',
+        guests: cleanText(record.guests, 3),
+        notes: cleanText(record.notes, 500),
+        inviteToken: cleanText(record.inviteToken || record.invite_token, 64),
+        submittedAt: String(record.submittedAt || record.submitted_at || new Date().toISOString())
+    };
+}
+
+async function readRsvpStore() {
+    const localRsvps = await readLocalRsvpStore();
+    if (hasSupabaseConfig()) {
+        try {
+            const { res, data } = await supabaseRequest('/rsvps?select=id,name,phone,attending,attending_text,guests,notes,invite_token,submitted_at&attending=eq.yes&order=submitted_at.desc', { method: 'GET' });
+            if (res.ok && Array.isArray(data)) {
+                const remoteRsvps = data.map(record => normalizeRsvpRecord({
+                    ...record,
+                    inviteToken: record.invite_token,
+                    submittedAt: record.submitted_at
+                }));
+                await writeLocalRsvpStore(remoteRsvps);
+                return remoteRsvps;
+            }
+        } catch {}
+    }
+    return localRsvps.map(normalizeRsvpRecord);
+}
+
+async function writeRsvpRecord(record) {
+    const rsvp = normalizeRsvpRecord(record);
+    const localRsvps = await readLocalRsvpStore();
+    localRsvps.unshift(rsvp);
+    await writeLocalRsvpStore(localRsvps);
+
+    if (hasSupabaseConfig()) {
+        const { res } = await supabaseRequest('/rsvps', {
+            method: 'POST',
+            headers: supabaseJsonHeaders(),
+            body: JSON.stringify({
+                id: rsvp.id,
+                name: rsvp.name,
+                phone: rsvp.phone,
+                attending: rsvp.attending,
+                attending_text: rsvp.attendingText,
+                guests: rsvp.guests,
+                notes: rsvp.notes,
+                invite_token: rsvp.inviteToken || null,
+                submitted_at: rsvp.submittedAt
+            })
+        });
+        if (!res.ok) throw new Error('Failed to save RSVP to Supabase');
+    }
+    return rsvp;
 }
 
 async function readLocalSiteSettings() {
@@ -837,6 +914,7 @@ function parseRsvpBody(raw) {
         attending: String(data.attending || '').trim(),
         guests: String(data.guests || '').trim(),
         notes: String(data.notes || '').trim(),
+        inviteToken: String(data.inviteToken || '').trim(),
         submittedAt: data.submittedAt || new Date().toISOString(),
         attendingText: data.attendingText || (data.attending === 'yes' ? 'Joyfully Yes' : 'Regretfully No')
     };
@@ -1049,6 +1127,21 @@ const server = http.createServer(async(req, res) => {
             return;
         }
 
+        if (req.method === 'GET' && url.pathname === '/api/admin/rsvps') {
+            if (!ADMIN_SECRET) {
+                await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
+                return;
+            }
+            if (!hasAdminAccess(req)) {
+                await sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
+
+            const rsvps = await readRsvpStore();
+            await sendJson(res, 200, { ok: true, rsvps });
+            return;
+        }
+
         if (req.method === 'POST' && url.pathname === '/api/admin/invites') {
             if (!ADMIN_SECRET) {
                 await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
@@ -1186,12 +1279,22 @@ const server = http.createServer(async(req, res) => {
                 raw += chunk;
                 if (raw.length > 25 * 1024 * 1024) req.destroy();
             });
-            req.on('end', () => {
+            req.on('end', async() => {
                 let data = {};
                 try {
                     data = raw ? parseRsvpBody(raw) : {};
                 } catch (err) {
                     data = {};
+                }
+
+                let savedRsvp = null;
+                if (data.attending === 'yes' && data.name) {
+                    try {
+                        savedRsvp = await writeRsvpRecord({
+                            ...data,
+                            id: crypto.randomBytes(8).toString('hex')
+                        });
+                    } catch {}
                 }
 
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1204,7 +1307,8 @@ const server = http.createServer(async(req, res) => {
                         phone: data.phone || '',
                         attending: data.attending || '',
                         guests: data.guests || '',
-                        notes: data.notes || ''
+                        notes: data.notes || '',
+                        saved: Boolean(savedRsvp)
                     }
                 }));
             });

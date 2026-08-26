@@ -699,6 +699,12 @@
                 <div class="status" id="list-status"></div>
             </div>
             <div class="panel" style="grid-column: 1 / -1;">
+                <h2>Guests Attending</h2>
+                <div class="hint">Guests who selected Joyfully Yes appear here after submitting their RSVP.</div>
+                <div class="list" id="rsvp-list"></div>
+                <div class="status" id="rsvp-status"></div>
+            </div>
+            <div class="panel" style="grid-column: 1 / -1;">
                 <h2>Customize Invitation</h2>
                 <div class="hint">Update the public card here. Saved changes appear on the invitation page.</div>
                 <form id="settings-form">
@@ -718,6 +724,8 @@
         const formStatus = document.getElementById('form-status');
         const listStatus = document.getElementById('list-status');
         const inviteList = document.getElementById('invite-list');
+        const rsvpList = document.getElementById('rsvp-list');
+        const rsvpStatus = document.getElementById('rsvp-status');
         const generated = document.getElementById('generated');
         const generatedLink = document.getElementById('generated-link');
         const copyLinkBtn = document.getElementById('copy-link-btn');
@@ -912,6 +920,63 @@
             }
         }
 
+        function buildRsvpCard(rsvp) {
+            const card = document.createElement('div');
+            card.className = 'invite-card';
+
+            const title = document.createElement('p');
+            title.className = 'invite-name';
+            title.textContent = rsvp.name || '(Unnamed guest)';
+            card.appendChild(title);
+
+            const meta = document.createElement('p');
+            meta.className = 'meta';
+            meta.textContent = `${rsvp.guests || '1'} guest${String(rsvp.guests) === '1' ? '' : 's'} · ${rsvp.submittedAt ? new Date(rsvp.submittedAt).toLocaleString() : ''}`;
+            card.appendChild(meta);
+
+            if (rsvp.phone) {
+                const phone = document.createElement('div');
+                phone.className = 'copy-line';
+                phone.textContent = 'Phone: ' + rsvp.phone;
+                card.appendChild(phone);
+            }
+            if (rsvp.notes) {
+                const notes = document.createElement('div');
+                notes.className = 'copy-line';
+                notes.textContent = 'Note: ' + rsvp.notes;
+                card.appendChild(notes);
+            }
+            return card;
+        }
+
+        async function loadRsvps() {
+            setStatus(rsvpStatus, 'Loading attending guests...');
+            rsvpList.innerHTML = '';
+            try {
+                const {
+                    res,
+                    data
+                } = await requestJson('/api/admin/rsvps');
+                if (res.status === 401 || res.status === 403) {
+                    window.location.href = '/admin';
+                    return;
+                }
+                if (!res.ok) throw new Error(data.error || 'Unable to load attending guests');
+
+                const rsvps = data.rsvps || [];
+                if (!rsvps.length) {
+                    setStatus(rsvpStatus, 'No Joyfully Yes responses yet.');
+                    return;
+                }
+
+                const totalGuests = rsvps.reduce((total, rsvp) => total + (Number(rsvp.guests) || 1), 0);
+                setStatus(rsvpStatus, `${rsvps.length} response${rsvps.length === 1 ? '' : 's'} · ${totalGuests} guest${totalGuests === 1 ? '' : 's'} attending.`);
+                rsvps.forEach(rsvp => rsvpList.appendChild(buildRsvpCard(rsvp)));
+            } catch (err) {
+                setStatus(rsvpStatus, err.message, true);
+            }
+        }
+
         form.addEventListener('submit', async(event) => {
             event.preventDefault();
             generated.hidden = true;
@@ -962,6 +1027,7 @@
         });
 
         refreshBtn.addEventListener('click', loadInvites);
+        refreshBtn.addEventListener('click', loadRsvps);
 
         logoutBtn.addEventListener('click', async() => {
             try {
@@ -1529,6 +1595,7 @@
 
         ensureAuth().then(() => {
             loadInvites();
+            loadRsvps();
             loadSiteSettings();
         });
     </script>

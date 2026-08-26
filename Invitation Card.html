@@ -1804,6 +1804,7 @@
         var submitBtn = document.getElementById('submit-btn');
         var whatsappNumber = '260776919101';
         var gmailRecipient = 'dennishamps2000@gmail.com';
+        var inviteToken = new URLSearchParams(window.location.search).get('invite') || '';
 
         statusBadge.className = 'rsvp-status ready';
         statusBadge.textContent = 'Ready to open Email & WhatsApp';
@@ -1817,7 +1818,8 @@
                 attendingText: attendingText,
                 guests: data.guests,
                 notes: data.notes,
-                submittedAt: data.submittedAt
+                submittedAt: data.submittedAt,
+                inviteToken: inviteToken
             };
         }
 
@@ -1839,7 +1841,7 @@
             return /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent);
         }
 
-        form.addEventListener('submit', function(e) {
+        form.addEventListener('submit', async function(e) {
             e.preventDefault();
             submitBtn.disabled = true;
             submitBtn.textContent = 'Preparing Response...';
@@ -1856,6 +1858,13 @@
 
             try {
                 var responseMessage = buildResponseMessage(data);
+                await fetch('/api/rsvp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
                 var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(gmailRecipient) + '&su=' + encodeURIComponent('Wedding RSVP Response - ' + data.name) + '&body=' + encodeURIComponent(responseMessage);
                 var mailtoUrl = 'mailto:' + encodeURIComponent(gmailRecipient) + '?subject=' + encodeURIComponent('Wedding RSVP Response - ' + data.name) + '&body=' + encodeURIComponent(responseMessage);
                 var whatsappUrl = 'https://wa.me/' + whatsappNumber + '?text=' + encodeURIComponent(responseMessage);

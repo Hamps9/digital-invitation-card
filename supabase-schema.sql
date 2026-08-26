@@ -15,6 +15,20 @@ create table if not exists public.invites (
 
 alter table public.invites enable row level security;
 
+create table if not exists public.rsvps (
+  id text primary key,
+  name text not null,
+  phone text,
+  attending text not null,
+  attending_text text not null,
+  guests integer not null default 1,
+  notes text,
+  invite_token text,
+  submitted_at timestamptz not null default now()
+);
+
+alter table public.rsvps enable row level security;
+
 insert into storage.buckets (id, name, public)
 values ('invitation-images', 'invitation-images', true)
 on conflict (id) do nothing;
