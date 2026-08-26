@@ -13,7 +13,7 @@ function loadDotEnv(filePath) {
         const idx = trimmed.indexOf('=');
         if (idx === -1) continue;
         const key = trimmed.slice(0, idx).replace(/^\uFEFF/, '').trim();
-        const value = trimmed.slice(idx + 1).trim();
+        const value = normalizeEnvValue(trimmed.slice(idx + 1));
         if (key && !(key in process.env)) {
             process.env[key] = value;
         }
@@ -30,12 +30,20 @@ function readDotEnvValue(filePath, wantedKey) {
             const idx = trimmed.indexOf('=');
             if (idx === -1) continue;
             const key = trimmed.slice(0, idx).replace(/^\uFEFF/, '').trim();
-            if (key === wantedKey) return trimmed.slice(idx + 1).trim();
+            if (key === wantedKey) return normalizeEnvValue(trimmed.slice(idx + 1));
         }
     } catch {
         return '';
     }
     return '';
+}
+
+function normalizeEnvValue(value) {
+    const text = String(value || '').trim();
+    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+        return text.slice(1, -1).trim();
+    }
+    return text;
 }
 
 function getAdminSecret() {
@@ -113,8 +121,8 @@ const DEFAULT_SITE_SETTINGS = {
     rsvpIntro: "We'd love to know if we can save you a seat."
 };
 
-const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim().replace(/\/+$/, '');
-const SUPABASE_SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '').trim();
+const SUPABASE_URL = normalizeEnvValue(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL).replace(/\/+$/, '');
+const SUPABASE_SERVICE_KEY = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY);
 const SUPABASE_REST_URL = SUPABASE_URL ? SUPABASE_URL + '/rest/v1' : '';
 const SUPABASE_STORAGE_URL = SUPABASE_URL ? SUPABASE_URL + '/storage/v1' : '';
 const IMAGE_STORAGE_BUCKET = 'invitation-images';
