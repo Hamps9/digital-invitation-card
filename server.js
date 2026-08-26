@@ -414,34 +414,45 @@ async function readInviteStore() {
 async function writeInviteStore(invites) {
     const normalized = Array.isArray(invites) ? invites : [];
     await writeLocalInviteStore(normalized);
+    let remoteSaved = !hasSupabaseConfig();
+    let remoteError = '';
 
     if (hasSupabaseConfig()) {
-        const rows = normalized.map(invite => ({
-            token: invite.token,
-            invite: {
+        try {
+            const rows = normalized.map(invite => ({
                 token: invite.token,
-                displayName: invite.displayName,
-                inviteType: invite.inviteType,
-                openingMessage: invite.openingMessage,
-                createdAt: invite.createdAt,
-                updatedAt: invite.updatedAt
-            },
-            created_at: invite.createdAt,
-            updated_at: invite.updatedAt
-        }));
+                invite: {
+                    token: invite.token,
+                    displayName: invite.displayName,
+                    inviteType: invite.inviteType,
+                    openingMessage: invite.openingMessage,
+                    createdAt: invite.createdAt,
+                    updatedAt: invite.updatedAt
+                },
+                created_at: invite.createdAt,
+                updated_at: invite.updatedAt
+            }));
 
-        const { res } = await supabaseRequest('/invites?on_conflict=token', {
-            method: 'POST',
-            headers: supabaseJsonHeaders({
-                Prefer: 'resolution=merge-duplicates,return=representation'
-            }),
-            body: JSON.stringify(rows)
-        });
+            const { res, data } = await supabaseRequest('/invites?on_conflict=token', {
+                method: 'POST',
+                headers: supabaseJsonHeaders({
+                    Prefer: 'resolution=merge-duplicates,return=representation'
+                }),
+                body: JSON.stringify(rows)
+            });
 
-        if (!res.ok) {
-            throw new Error('Failed to save invite records to Supabase');
+            if (!res.ok) {
+                const detail = typeof data === 'string' ? data : (data && (data.message || data.error)) || ('HTTP ' + res.status);
+                throw new Error(detail);
+            }
+            remoteSaved = true;
+        } catch (err) {
+            remoteError = err.message || 'Supabase save failed';
+            console.error('Supabase invite save failed; keeping local invites:', remoteError);
         }
     }
+
+    return { remoteSaved, remoteError };
 }
 
 function cloneDefaultSiteSettings() {
@@ -1193,10 +1204,12 @@ const server = http.createServer(async(req, res) => {
             const invite = createInviteRecord(body);
             const invites = await readInviteStore();
             invites.unshift(invite);
-            await writeInviteStore(invites);
+            const saveResult = await writeInviteStore(invites);
 
             await sendJson(res, 201, {
                 ok: true,
+                remoteSaved: saveResult.remoteSaved,
+                warning: saveResult.remoteError ? 'Invite saved locally, but remote sync failed: ' + saveResult.remoteError : '',
                 invite: {
                     token: invite.token,
                     displayName: invite.displayName,

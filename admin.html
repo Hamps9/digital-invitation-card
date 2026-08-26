@@ -1009,7 +1009,7 @@
                 generated.hidden = false;
                 generatedLink.textContent = data.invite.link;
                 generatedLink.href = data.invite.link;
-                setStatus(formStatus, `Created invite for ${data.invite.displayName}.`);
+                setStatus(formStatus, data.warning || `Created invite for ${data.invite.displayName}.`, Boolean(data.warning));
                 await loadInvites();
             } catch (err) {
                 setStatus(formStatus, err.message, true);
