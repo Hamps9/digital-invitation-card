@@ -665,28 +665,39 @@ async function readSiteSettings() {
 
 async function writeSiteSettings(settings) {
     let normalized = normalizeSiteSettings(settings);
+    let remoteSaved = !hasSupabaseConfig();
+    let remoteError = '';
+
     if (hasSupabaseConfig()) {
-        normalized = await materializeUploadedImages(normalized);
-        const rows = [{
-            id: 'default',
-            settings: normalized,
-            updated_at: new Date().toISOString()
-        }];
+        try {
+            normalized = await materializeUploadedImages(normalized);
+            const rows = [{
+                id: 'default',
+                settings: normalized,
+                updated_at: new Date().toISOString()
+            }];
 
-        const { res } = await supabaseRequest('/site_settings?on_conflict=id', {
-            method: 'POST',
-            headers: supabaseJsonHeaders({
-                Prefer: 'resolution=merge-duplicates,return=representation'
-            }),
-            body: JSON.stringify(rows)
-        });
+            const { res, data } = await supabaseRequest('/site_settings?on_conflict=id', {
+                method: 'POST',
+                headers: supabaseJsonHeaders({
+                    Prefer: 'resolution=merge-duplicates,return=representation'
+                }),
+                body: JSON.stringify(rows)
+            });
 
-        if (!res.ok) {
-            throw new Error('Failed to save settings to Supabase');
+            if (!res.ok) {
+                const detail = typeof data === 'string' ? data : (data && (data.message || data.error)) || ('HTTP ' + res.status);
+                throw new Error(detail);
+            }
+            remoteSaved = true;
+        } catch (err) {
+            remoteError = err.message || 'Supabase save failed';
+            console.error('Supabase settings save failed; keeping local settings:', remoteError);
         }
     }
 
     await writeLocalSiteSettings(normalized);
+    return { remoteSaved, remoteError, settings: normalized };
 }
 
 async function findInvite(token) {
@@ -1004,8 +1015,13 @@ const server = http.createServer(async(req, res) => {
             }
 
             const settings = normalizeSiteSettings(body);
-            await writeSiteSettings(settings);
-            await sendJson(res, 200, { ok: true, settings });
+            const result = await writeSiteSettings(settings);
+            await sendJson(res, 200, {
+                ok: true,
+                settings: result.settings,
+                remoteSaved: result.remoteSaved,
+                warning: result.remoteError ? 'Saved locally, but remote sync failed: ' + result.remoteError : ''
+            });
             return;
         }
 

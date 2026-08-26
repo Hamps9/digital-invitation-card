@@ -1580,7 +1580,7 @@
                 if (!res.ok) throw new Error(data.error || 'Unable to save settings');
                 originalSettings = data.settings || payload;
                 renderSettingsForm(originalSettings);
-                setSettingsStatus('Invitation settings saved.');
+                setSettingsStatus(data.warning || 'Invitation settings saved.', Boolean(data.warning));
             } catch (err) {
                 setSettingsStatus(err.message || 'Unable to save settings', true);
             }
