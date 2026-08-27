@@ -197,11 +197,11 @@ async function supabaseRequest(pathSuffix, options = {}) {
     for (const key of SUPABASE_KEYS) {
         const res = await fetch(SUPABASE_REST_URL + pathSuffix, {
             ...options,
-            headers: Object.assign({}, options.headers || {}, {
+            headers: Object.assign({
                 apikey: key,
                 Authorization: 'Bearer ' + key,
                 Prefer: 'return=representation'
-            })
+            }, options.headers || {})
         });
         lastResponse = res;
         if (res.ok || res.status !== 401) return parseSupabaseResponse(res);
@@ -209,7 +209,6 @@ async function supabaseRequest(pathSuffix, options = {}) {
 
     return parseSupabaseResponse(lastResponse);
 }
-
 async function parseSupabaseResponse(res) {
     if (!res) throw new Error('Supabase request failed');
 
@@ -269,19 +268,43 @@ function normalizeSupabaseInviteRecord(record) {
     };
 }
 
+function dedupeInvites(invites) {
+    const seen = new Map();
+    for (const invite of Array.isArray(invites) ? invites : []) {
+        if (!invite || !invite.token) continue;
+        const token = String(invite.token).trim();
+        if (!token) continue;
+        const normalized = {
+            ...invite,
+            token,
+            displayName: cleanText(invite.displayName || invite.name || '', 120),
+            inviteType: normalizeInviteType(invite.inviteType),
+            openingMessage: cleanText(invite.openingMessage || invite.message || defaultOpeningMessage(normalizeInviteType(invite.inviteType)), 240) || defaultOpeningMessage(normalizeInviteType(invite.inviteType)),
+            createdAt: String(invite.createdAt || new Date().toISOString()),
+            updatedAt: String(invite.updatedAt || invite.createdAt || new Date().toISOString())
+        };
+        const existing = seen.get(token);
+        if (!existing || String(existing.updatedAt || '').localeCompare(String(normalized.updatedAt || '')) < 0) {
+            seen.set(token, normalized);
+        }
+    }
+    return Array.from(seen.values()).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
 async function readLocalInviteStore() {
     try {
         const raw = await fsp.readFile(INVITES_FILE, 'utf8');
         const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
+        return dedupeInvites(Array.isArray(parsed) ? parsed : []);
     } catch {
         return [];
     }
 }
 
 async function writeLocalInviteStore(invites) {
+    const unique = dedupeInvites(invites);
     const tmpFile = INVITES_FILE + '.tmp';
-    await fsp.writeFile(tmpFile, JSON.stringify(invites, null, 2), 'utf8');
+    await fsp.writeFile(tmpFile, JSON.stringify(unique, null, 2), 'utf8');
     await fsp.rename(tmpFile, INVITES_FILE);
 }
 
@@ -442,9 +465,9 @@ async function readInviteStore() {
                 method: 'GET'
             });
             if (res.ok && Array.isArray(data)) {
-                const remoteInvites = data.map(normalizeSupabaseInviteRecord).filter(invite => invite.token);
+                const remoteInvites = dedupeInvites(data.map(normalizeSupabaseInviteRecord).filter(invite => invite.token));
                 const remoteTokens = new Set(remoteInvites.map(invite => invite.token));
-                const merged = remoteInvites.concat(localInvites.filter(invite => invite && invite.token && !remoteTokens.has(invite.token)));
+                const merged = dedupeInvites(remoteInvites.concat(localInvites.filter(invite => invite && invite.token && !remoteTokens.has(invite.token))));
 
                 await writeLocalInviteStore(merged);
                 if (merged.length > remoteInvites.length) {
@@ -461,14 +484,14 @@ async function readInviteStore() {
                 await writeInviteStore(localInvites);
             } catch {}
         }
-        return localInvites;
+        return dedupeInvites(localInvites);
     }
 
     return readLocalInviteStore();
 }
 
 async function writeInviteStore(invites) {
-    const normalized = Array.isArray(invites) ? invites : [];
+    const normalized = dedupeInvites(invites);
     await writeLocalInviteStore(normalized);
     let remoteSaved = !hasSupabaseConfig();
     let remoteError = '';
@@ -746,19 +769,33 @@ async function writeSiteSettings(settings) {
     if (hasSupabaseConfig()) {
         try {
             normalized = await materializeUploadedImages(normalized);
-            const rows = [{
+            const updatedAt = new Date().toISOString();
+            const upsertBody = {
                 id: 'default',
                 settings: normalized,
-                updated_at: new Date().toISOString()
-            }];
+                updated_at: updatedAt
+            };
 
-            const { res, data } = await supabaseRequest('/site_settings?on_conflict=id', {
-                method: 'POST',
+            let { res, data } = await supabaseRequest('/site_settings?id=eq.default', {
+                method: 'PATCH',
                 headers: supabaseJsonHeaders({
-                    Prefer: 'resolution=merge-duplicates,return=representation'
+                    Prefer: 'return=representation'
                 }),
-                body: JSON.stringify(rows)
+                body: JSON.stringify({
+                    settings: normalized,
+                    updated_at: updatedAt
+                })
             });
+
+            if (res.ok && Array.isArray(data) && data.length === 0) {
+                ({ res, data } = await supabaseRequest('/site_settings?on_conflict=id', {
+                    method: 'POST',
+                    headers: supabaseJsonHeaders({
+                        Prefer: 'resolution=merge-duplicates,return=representation'
+                    }),
+                    body: JSON.stringify(upsertBody)
+                }));
+            }
 
             if (!res.ok) {
                 const detail = typeof data === 'string' ? data : (data && (data.message || data.error)) || ('HTTP ' + res.status);
@@ -774,7 +811,6 @@ async function writeSiteSettings(settings) {
     await writeLocalSiteSettings(normalized);
     return { remoteSaved, remoteError, settings: normalized };
 }
-
 async function findInvite(token) {
     const invites = await readInviteStore();
     return invites.find(invite => invite.token === token) || null;
@@ -1272,7 +1308,7 @@ const server = http.createServer(async(req, res) => {
             }
 
             const invite = createInviteRecord(body);
-            const invites = await readInviteStore();
+            const invites = dedupeInvites(await readInviteStore());
             invites.unshift(invite);
             const saveResult = await writeInviteStore(invites);
 
@@ -1317,7 +1353,7 @@ const server = http.createServer(async(req, res) => {
                 return;
             }
 
-            const invites = await readInviteStore();
+            const invites = dedupeInvites(await readInviteStore());
             const index = invites.findIndex(invite => invite.token === token);
             if (index === -1) {
                 await sendJson(res, 404, { ok: false, error: 'Invite not found' });
@@ -1359,8 +1395,8 @@ const server = http.createServer(async(req, res) => {
                 return;
             }
 
-            const invites = await readInviteStore();
-            const nextInvites = invites.filter(invite => invite.token !== token);
+            const invites = dedupeInvites(await readInviteStore());
+            const nextInvites = dedupeInvites(invites.filter(invite => invite.token !== token));
             if (nextInvites.length === invites.length) {
                 await sendJson(res, 404, { ok: false, error: 'Invite not found' });
                 return;

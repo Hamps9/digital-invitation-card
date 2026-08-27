@@ -20,26 +20,10 @@
   "dressCodeDescription": "Soft, breathable fabrics in our wedding palette - flowing dresses, light suits, garden-ready shoes.",
   "ladiesHeading": "Ladies Dress Code",
   "menHeading": "Men's Dress Code",
-  "ladiesImageUrls": [
-    "Images/Woman 1.webp",
-    "Images/Woman 2.webp",
-    "Images/Woman 3.webp"
-  ],
-  "ladiesCaptions": [
-    "Flowing Dress",
-    "Elegant Gown",
-    "Garden Party"
-  ],
-  "menImageUrls": [
-    "Images/Man 1.webp",
-    "Images/Man 2.webp",
-    "Images/Man 3.webp"
-  ],
-  "menCaptions": [
-    "Light Suit",
-    "Dress Shirt",
-    "Smart Casual"
-  ],
+  "ladiesImageUrls": [],
+  "ladiesCaptions": [],
+  "menImageUrls": [],
+  "menCaptions": [],
   "giftQuote": "\"Your presence is our greatest gift. Should you wish to bless us further, contributions are warmly welcome.\"",
   "mobileMoneyLabel": "Mobile Money",
   "mobileMoneyValue": "+260 97 000 0000",
