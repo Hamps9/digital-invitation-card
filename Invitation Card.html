@@ -1607,7 +1607,7 @@
         }
 
         function loadPublicSiteSettings() {
-            fetch('/api/site-settings?ts=' + Date.now(), {
+            return fetch('/api/site-settings?ts=' + Date.now(), {
                     cache: 'no-store'
                 })
                 .then(function(res) {
