@@ -1871,13 +1871,20 @@
 
             try {
                 var responseMessage = buildResponseMessage(data);
-                await fetch('/api/rsvp', {
+                var rsvpResponse = await fetch('/api/rsvp', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(data)
                 });
+                var rsvpResult = await rsvpResponse.json().catch(function() {
+                    return {};
+                });
+                if (!rsvpResponse.ok) {
+                    throw new Error(rsvpResult.error || 'Unable to save RSVP');
+                }
+                var saveWarning = rsvpResult.warning || '';
                 var gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(gmailRecipient) + '&su=' + encodeURIComponent('Wedding RSVP Response - ' + data.name) + '&body=' + encodeURIComponent(responseMessage);
                 var mailtoUrl = 'mailto:' + encodeURIComponent(gmailRecipient) + '?subject=' + encodeURIComponent('Wedding RSVP Response - ' + data.name) + '&body=' + encodeURIComponent(responseMessage);
                 var whatsappUrl = 'https://wa.me/' + whatsappNumber + '?text=' + encodeURIComponent(responseMessage);
@@ -1889,7 +1896,7 @@
                 }
                 window.open(whatsappUrl, '_blank', 'noopener');
 
-                msg.textContent = 'Email and WhatsApp drafts are open. Send both to confirm your RSVP.';
+                msg.textContent = (saveWarning ? saveWarning + ' ' : '') + 'Email and WhatsApp drafts are open. Send both to confirm your RSVP.';
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Prepare Response';
             } catch (err) {

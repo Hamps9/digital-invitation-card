@@ -439,6 +439,7 @@ function contentType(filePath) {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.gif': 'image/gif',
+        '.webp': 'image/webp',
         '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon',
         '.json': 'application/json; charset=utf-8'
@@ -1105,6 +1106,11 @@ const server = http.createServer(async(req, res) => {
     try {
         const url = new URL(req.url, `http://${req.headers.host}`);
 
+        if (req.method === 'GET' && url.pathname === '/healthz') {
+            await sendJson(res, 200, { ok: true });
+            return;
+        }
+
         if (req.method === 'GET' && url.pathname === '/api/rsvp-status') {
             await sendJson(res, 200, getDeliveryStatus());
             return;
@@ -1496,8 +1502,8 @@ const server = http.createServer(async(req, res) => {
         }
 
         const pathname = decodeURIComponent(url.pathname === '/' ? '/Invitation Card.html' : url.pathname);
-        const filePath = path.join(ROOT, pathname.replace(/^\/+/, ''));
-        if (!filePath.startsWith(ROOT)) {
+        const filePath = path.resolve(ROOT, pathname.replace(/^\/+/, ''));
+        if (filePath !== ROOT && !filePath.startsWith(ROOT + path.sep)) {
             res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('Forbidden');
             return;
