@@ -1422,15 +1422,15 @@
             var guest = params.get('to');
             var inviteToken = params.get('invite');
 
-            loadPublicSiteSettings();
-
-            if (guest) {
-                applyGuestPersonalization({
-                    displayName: guest
-                });
-            } else {
-                setEnvelopeCopy('Tap the envelope to open');
-            }
+            loadPublicSiteSettings().then(function() {
+                if (guest) {
+                    applyGuestPersonalization({
+                        displayName: guest
+                    });
+                } else {
+                    setEnvelopeCopy('Tap the envelope to open');
+                }
+            });
 
             if (inviteToken) {
                 fetch('/api/invites/' + encodeURIComponent(inviteToken))
@@ -1607,14 +1607,20 @@
         }
 
         function loadPublicSiteSettings() {
-            fetch('/api/site-settings')
+            fetch('/api/site-settings?ts=' + Date.now(), {
+                    cache: 'no-store'
+                })
                 .then(function(res) {
+                    if (!res.ok) throw new Error('Unable to load invitation settings');
                     return res.json();
                 })
                 .then(function(data) {
                     applySiteSettings(data.settings || {});
+                    return data.settings || {};
                 })
-                .catch(function() {});
+                .catch(function() {
+                    return siteSettings;
+                });
         }
 
         // ---------- Envelope open sequence ----------
