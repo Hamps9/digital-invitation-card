@@ -1632,25 +1632,32 @@
         var exiting = false;
 
         function revealEnvelope() {
+            var overlay = document.getElementById('envelope-overlay');
+            var scene = document.getElementById('env-scene');
+            if (!overlay || !scene) return;
             opened = true;
-            envOverlay.classList.add('opening');
-            envScene.classList.add('opening');
+            overlay.classList.add('opening');
+            scene.classList.add('opening');
             setTimeout(function() {
-                envScene.classList.add('revealed');
+                scene.classList.add('revealed');
                 readyToContinue = true;
-                envScene.setAttribute('aria-label', 'Tap again to continue to the invitation');
+                scene.setAttribute('aria-label', 'Tap again to continue to the invitation');
                 setEnvelopeCopy('Tap again to continue');
             }, 520);
         }
 
         function continueToInvitation() {
             if (exiting) return;
+            var overlay = document.getElementById('envelope-overlay');
+            var scene = document.getElementById('env-scene');
+            var main = document.getElementById('app-main');
+            if (!overlay || !scene || !main) return;
             exiting = true;
-            envScene.classList.add('letter-out');
-            envOverlay.classList.add('scene-exit');
+            scene.classList.add('letter-out');
+            overlay.classList.add('scene-exit');
             setTimeout(function() {
-                envOverlay.style.display = 'none';
-                appMain.classList.add('visible');
+                overlay.style.display = 'none';
+                main.classList.add('visible');
                 layoutTrack();
             }, 650);
         }
