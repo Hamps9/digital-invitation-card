@@ -325,12 +325,13 @@ async function writeLocalRsvpStore(rsvps) {
 }
 
 function normalizeRsvpRecord(record) {
+    const attending = String(record.attending || 'yes').trim().toLowerCase() === 'yes' ? 'yes' : 'no';
     return {
         id: cleanText(record.id, 64),
         name: cleanText(record.name, 120),
         phone: cleanText(record.phone, 40),
-        attending: 'yes',
-        attendingText: 'Joyfully Yes',
+        attending,
+        attendingText: record.attendingText || record.attending_text || (attending === 'yes' ? 'Joyfully Yes' : 'Regretfully No'),
         guests: cleanText(record.guests, 3),
         notes: cleanText(record.notes, 500),
         inviteToken: cleanText(record.inviteToken || record.invite_token, 64),
@@ -338,35 +339,60 @@ function normalizeRsvpRecord(record) {
     };
 }
 
+function dedupeRsvps(rsvps) {
+    const seen = new Map();
+    for (const record of Array.isArray(rsvps) ? rsvps : []) {
+        const normalized = normalizeRsvpRecord(record);
+        if (!normalized.id || !normalized.name) continue;
+        const existing = seen.get(normalized.id);
+        if (!existing || String(existing.submittedAt).localeCompare(String(normalized.submittedAt)) < 0) {
+            seen.set(normalized.id, normalized);
+        }
+    }
+    return Array.from(seen.values()).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
+}
+
 async function readRsvpStore() {
-    const localRsvps = await readLocalRsvpStore();
+    const localRsvps = dedupeRsvps(await readLocalRsvpStore());
     if (hasSupabaseConfig()) {
         try {
             const { res, data } = await supabaseRequest('/rsvps?select=id,name,phone,attending,attending_text,guests,notes,invite_token,submitted_at&attending=eq.yes&order=submitted_at.desc', { method: 'GET' });
             if (res.ok && Array.isArray(data)) {
-                const remoteRsvps = data.map(record => normalizeRsvpRecord({
+                const remoteRsvps = dedupeRsvps(data.map(record => ({
                     ...record,
                     inviteToken: record.invite_token,
                     submittedAt: record.submitted_at
-                }));
-                await writeLocalRsvpStore(remoteRsvps);
-                return remoteRsvps;
+                })));
+                const remoteIds = new Set(remoteRsvps.map(rsvp => rsvp.id));
+                const merged = dedupeRsvps(remoteRsvps.concat(localRsvps));
+                await writeLocalRsvpStore(merged);
+
+                for (const rsvp of merged) {
+                    if (!remoteIds.has(rsvp.id)) {
+                        try {
+                            await writeRsvpRecord(rsvp);
+                        } catch {}
+                    }
+                }
+                return merged.filter(rsvp => rsvp.attending === 'yes');
             }
         } catch {}
     }
-    return localRsvps.map(normalizeRsvpRecord);
+    return localRsvps.filter(rsvp => rsvp.attending === 'yes');
 }
 
 async function writeRsvpRecord(record) {
     const rsvp = normalizeRsvpRecord(record);
-    const localRsvps = await readLocalRsvpStore();
+    const localRsvps = dedupeRsvps(await readLocalRsvpStore()).filter(existing => existing.id !== rsvp.id);
     localRsvps.unshift(rsvp);
     await writeLocalRsvpStore(localRsvps);
 
     if (hasSupabaseConfig()) {
-        const { res } = await supabaseRequest('/rsvps', {
+        const { res, data } = await supabaseRequest('/rsvps?on_conflict=id', {
             method: 'POST',
-            headers: supabaseJsonHeaders(),
+            headers: supabaseJsonHeaders({
+                Prefer: 'resolution=merge-duplicates,return=representation'
+            }),
             body: JSON.stringify({
                 id: rsvp.id,
                 name: rsvp.name,
@@ -379,7 +405,10 @@ async function writeRsvpRecord(record) {
                 submitted_at: rsvp.submittedAt
             })
         });
-        if (!res.ok) throw new Error('Failed to save RSVP to Supabase');
+        if (!res.ok) {
+            const detail = typeof data === 'string' ? data : (data && (data.message || data.error)) || ('HTTP ' + res.status);
+            throw new Error(detail);
+        }
     }
     return rsvp;
 }
@@ -466,11 +495,15 @@ async function readInviteStore() {
             });
             if (res.ok && Array.isArray(data)) {
                 const remoteInvites = dedupeInvites(data.map(normalizeSupabaseInviteRecord).filter(invite => invite.token));
-                const remoteTokens = new Set(remoteInvites.map(invite => invite.token));
-                const merged = dedupeInvites(remoteInvites.concat(localInvites.filter(invite => invite && invite.token && !remoteTokens.has(invite.token))));
+                const remoteByToken = new Map(remoteInvites.map(invite => [invite.token, invite]));
+                const merged = dedupeInvites(remoteInvites.concat(localInvites));
 
                 await writeLocalInviteStore(merged);
-                if (merged.length > remoteInvites.length) {
+                const needsRemoteSync = merged.some(invite => {
+                    const remote = remoteByToken.get(invite.token);
+                    return !remote || String(remote.updatedAt || '').localeCompare(String(invite.updatedAt || '')) < 0;
+                });
+                if (needsRemoteSync) {
                     try {
                         await writeInviteStore(merged);
                     } catch {}
@@ -1431,13 +1464,16 @@ const server = http.createServer(async(req, res) => {
                 }
 
                 let savedRsvp = null;
+                let saveError = '';
                 if (data.attending === 'yes' && data.name) {
                     try {
                         savedRsvp = await writeRsvpRecord({
                             ...data,
                             id: crypto.randomBytes(8).toString('hex')
                         });
-                    } catch {}
+                    } catch (err) {
+                        saveError = err.message || 'RSVP remote sync failed';
+                    }
                 }
 
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1445,6 +1481,7 @@ const server = http.createServer(async(req, res) => {
                     ok: true,
                     mode: 'compose-links',
                     message: 'This invitation opens Gmail and WhatsApp drafts in the browser. No server email delivery is required.',
+                    warning: saveError ? 'RSVP saved locally, but remote sync failed: ' + saveError : '',
                     guest: {
                         name: data.name || '',
                         phone: data.phone || '',
