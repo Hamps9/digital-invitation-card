@@ -132,6 +132,37 @@ function hasSupabaseConfig() {
     return Boolean(SUPABASE_REST_URL && SUPABASE_SERVICE_KEY);
 }
 
+function getSupabaseConfigSummary() {
+    let hostname = '';
+    try {
+        hostname = SUPABASE_URL ? new URL(SUPABASE_URL).hostname : '';
+    } catch {}
+
+    return {
+        configured: hasSupabaseConfig(),
+        url: hostname,
+        keyType: SUPABASE_SERVICE_KEY.startsWith('sb_secret_') ? 'secret' : SUPABASE_SERVICE_KEY.startsWith('eyJ') ? 'legacy service role JWT' : SUPABASE_SERVICE_KEY ? 'unrecognized' : 'missing'
+    };
+}
+
+async function checkSupabaseConnection() {
+    const summary = getSupabaseConfigSummary();
+    if (!summary.configured) {
+        return {...summary, connected: false, error: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required' };
+    }
+
+    try {
+        const { res, data } = await supabaseRequest('/site_settings?select=id&limit=1', { method: 'GET' });
+        if (!res.ok) {
+            const detail = typeof data === 'string' ? data : (data && (data.message || data.error)) || ('HTTP ' + res.status);
+            return {...summary, connected: false, error: detail };
+        }
+        return {...summary, connected: true, error: '' };
+    } catch (err) {
+        return {...summary, connected: false, error: err.message || 'Supabase request failed' };
+    }
+}
+
 function supabaseAuthHeaders(extraHeaders = {}) {
     return Object.assign({
         apikey: SUPABASE_SERVICE_KEY,
@@ -991,6 +1022,20 @@ const server = http.createServer(async(req, res) => {
                 authenticated: hasAdminAccess(req),
                 accessPath: '/admin'
             });
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/admin/supabase-status') {
+            if (!ADMIN_SECRET) {
+                await sendJson(res, 503, { ok: false, error: 'ADMIN_SECRET is not configured' });
+                return;
+            }
+            if (!hasAdminAccess(req)) {
+                await sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
+
+            await sendJson(res, 200, { ok: true, supabase: await checkSupabaseConnection() });
             return;
         }
 

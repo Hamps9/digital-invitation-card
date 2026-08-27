@@ -638,6 +638,10 @@
                 <strong>Updated admin is live</strong>
                 <span>You should now see the warm light palette, clearer sections, and cleaner spacing when the page loads.</span>
             </div>
+            <div class="live-banner" id="supabase-status" hidden>
+                <strong>Supabase status</strong>
+                <span id="supabase-status-text"></span>
+            </div>
         </div>
 
         <div class="bar">
@@ -763,6 +767,26 @@
             } = await requestJson('/api/admin/config');
             if (!res.ok || !data.authenticated) {
                 window.location.href = '/admin';
+            }
+        }
+
+        async function loadSupabaseStatus() {
+            const banner = document.getElementById('supabase-status');
+            const text = document.getElementById('supabase-status-text');
+            try {
+                const {
+                    data
+                } = await requestJson('/api/admin/supabase-status');
+                if (!data.supabase) return;
+                banner.hidden = false;
+                text.textContent = data.supabase.connected ?
+                    'Connected to ' + data.supabase.url + ' (' + data.supabase.keyType + ' key).' :
+                    'Not connected: ' + data.supabase.error + '. Check Render environment variables.';
+                text.style.color = data.supabase.connected ? '' : '#a14b39';
+            } catch {
+                banner.hidden = false;
+                text.textContent = 'Unable to check Supabase connection.';
+                text.style.color = '#a14b39';
             }
         }
 
@@ -1594,6 +1618,7 @@
         settingsForm.addEventListener('submit', saveSiteSettings);
 
         ensureAuth().then(() => {
+            loadSupabaseStatus();
             loadInvites();
             loadRsvps();
             loadSiteSettings();
