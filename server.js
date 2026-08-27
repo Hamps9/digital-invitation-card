@@ -122,14 +122,18 @@ const DEFAULT_SITE_SETTINGS = {
 };
 
 const SUPABASE_URL = normalizeEnvValue(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL).replace(/\/+$/, '');
-const SUPABASE_SERVICE_KEY = normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY);
+const SUPABASE_KEYS = [
+    normalizeEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    normalizeEnvValue(process.env.SUPABASE_SECRET_KEY)
+].filter((key, index, keys) => key && keys.indexOf(key) === index);
+const SUPABASE_SERVICE_KEY = SUPABASE_KEYS[0] || '';
 const SUPABASE_REST_URL = SUPABASE_URL ? SUPABASE_URL + '/rest/v1' : '';
 const SUPABASE_STORAGE_URL = SUPABASE_URL ? SUPABASE_URL + '/storage/v1' : '';
 const IMAGE_STORAGE_BUCKET = 'invitation-images';
 const IMAGE_STORAGE_ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 function hasSupabaseConfig() {
-    return Boolean(SUPABASE_REST_URL && SUPABASE_SERVICE_KEY);
+    return Boolean(SUPABASE_REST_URL && SUPABASE_KEYS.length);
 }
 
 function getSupabaseConfigSummary() {
@@ -141,7 +145,8 @@ function getSupabaseConfigSummary() {
     return {
         configured: hasSupabaseConfig(),
         url: hostname,
-        keyType: SUPABASE_SERVICE_KEY.startsWith('sb_secret_') ? 'secret' : SUPABASE_SERVICE_KEY.startsWith('eyJ') ? 'legacy service role JWT' : SUPABASE_SERVICE_KEY ? 'unrecognized' : 'missing'
+        keyTypes: SUPABASE_KEYS.map(supabaseKeyType),
+        keyType: supabaseKeyType(SUPABASE_SERVICE_KEY)
     };
 }
 
@@ -171,6 +176,12 @@ function supabaseAuthHeaders(extraHeaders = {}) {
     }, extraHeaders);
 }
 
+function supabaseKeyType(key) {
+    return key.startsWith('sb_secret_') ? 'secret' :
+        key.startsWith('eyJ') ? 'legacy service role JWT' :
+        key ? 'unrecognized' : 'missing';
+}
+
 function supabaseJsonHeaders(extraHeaders = {}) {
     return supabaseAuthHeaders(Object.assign({
         'Content-Type': 'application/json'
@@ -182,10 +193,25 @@ async function supabaseRequest(pathSuffix, options = {}) {
         throw new Error('Supabase is not configured');
     }
 
-    const res = await fetch(SUPABASE_REST_URL + pathSuffix, {
-        ...options,
-        headers: supabaseAuthHeaders(options.headers || {})
-    });
+    let lastResponse;
+    for (const key of SUPABASE_KEYS) {
+        const res = await fetch(SUPABASE_REST_URL + pathSuffix, {
+            ...options,
+            headers: Object.assign({}, options.headers || {}, {
+                apikey: key,
+                Authorization: 'Bearer ' + key,
+                Prefer: 'return=representation'
+            })
+        });
+        lastResponse = res;
+        if (res.ok || res.status !== 401) return parseSupabaseResponse(res);
+    }
+
+    return parseSupabaseResponse(lastResponse);
+}
+
+async function parseSupabaseResponse(res) {
+    if (!res) throw new Error('Supabase request failed');
 
     const raw = await res.text();
     let data = null;
@@ -205,22 +231,21 @@ async function supabaseStorageRequest(pathSuffix, options = {}) {
         throw new Error('Supabase is not configured');
     }
 
-    const res = await fetch(SUPABASE_STORAGE_URL + pathSuffix, {
-        ...options,
-        headers: supabaseAuthHeaders(options.headers || {})
-    });
-
-    const raw = await res.text();
-    let data = null;
-    if (raw) {
-        try {
-            data = JSON.parse(raw);
-        } catch {
-            data = raw;
-        }
+    let lastResponse;
+    for (const key of SUPABASE_KEYS) {
+        const res = await fetch(SUPABASE_STORAGE_URL + pathSuffix, {
+            ...options,
+            headers: Object.assign({}, options.headers || {}, {
+                apikey: key,
+                Authorization: 'Bearer ' + key,
+                Prefer: 'return=representation'
+            })
+        });
+        lastResponse = res;
+        if (res.ok || res.status !== 401) return parseSupabaseResponse(res);
     }
 
-    return { res, data };
+    return parseSupabaseResponse(lastResponse);
 }
 
 function normalizeSiteSettingsRecord(record) {
